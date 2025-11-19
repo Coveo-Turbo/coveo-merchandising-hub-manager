@@ -1,0 +1,171 @@
+import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel } from '../types';
+
+const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
+
+export const bulkCreateListings = async (
+  config: ConfigState,
+  listings: PublicListingPageRequestModel[]
+) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/bulk-create`;
+  
+  // Chunking to respect API limits (100 items per request max per Swagger)
+  const chunkSize = 50;
+  const chunks = [];
+  
+  for (let i = 0; i < listings.length; i += chunkSize) {
+    chunks.push(listings.slice(i, i + chunkSize));
+  }
+
+  const results = [];
+
+  for (const chunk of chunks) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(chunk)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `API Error ${response.status}`;
+        try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.message) errorMessage += `: ${errorJson.message}`;
+        } catch (e) {
+            errorMessage += `: ${errorText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      results.push(data);
+    } catch (error) {
+      console.error("Failed to push chunk", error);
+      throw error;
+    }
+  }
+
+  return results;
+};
+
+export const fetchAllListingIds = async (config: ConfigState): Promise<string[]> => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages`;
+  let page = 0;
+  let allIds: string[] = [];
+  let hasMore = true;
+
+  while (hasMore) {
+      const response = await fetch(`${url}?trackingId=${config.trackingId}&page=${page}&perPage=100`, {
+          headers: { 
+            'Authorization': `Bearer ${config.accessToken}`,
+            'Accept': 'application/json'
+          }
+      });
+      
+      if (!response.ok) {
+         const errorText = await response.text();
+         throw new Error(`Failed to fetch listings: ${errorText}`);
+      }
+
+      const data: CommercePageModelPublicListingPageResponseModel = await response.json();
+      
+      if (!data.items || data.items.length === 0) {
+          hasMore = false;
+      } else {
+          allIds = [...allIds, ...data.items.map(i => i.id)];
+          if (page >= data.totalPages - 1) hasMore = false;
+          page++;
+      }
+  }
+  return allIds;
+};
+
+export const bulkDeleteListings = async (config: ConfigState, ids: string[]) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/bulk-delete`;
+  const chunkSize = 50; 
+  
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(chunk)
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to delete chunk: ${await response.text()}`);
+    }
+  }
+};
+
+// Global Search Configuration
+export const getGlobalSearchConfig = async (config: ConfigState) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/search/global?trackingId=${config.trackingId}`;
+  const response = await fetch(url, {
+    headers: { 
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Accept': 'application/json' 
+    }
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};
+
+export const updateGlobalSearchConfig = async (config: ConfigState, data: any) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/search/global`;
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};
+
+// Global Listing Configuration
+export const getGlobalListingConfig = async (config: ConfigState) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/listings/global?trackingId=${config.trackingId}`;
+  const response = await fetch(url, {
+    headers: { 
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Accept': 'application/json' 
+    }
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};
+
+export const updateGlobalListingConfig = async (config: ConfigState, data: any) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/listings/global`;
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};

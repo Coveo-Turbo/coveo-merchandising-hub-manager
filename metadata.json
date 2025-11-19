@@ -1,0 +1,5 @@
+{
+  "name": "Coveo Merchandising Hub Manager",
+  "description": "A bulk creation tool for Coveo Commerce Listing Pages. Ingests CSV files, previews configurations, and pushes to the Coveo Merchandising Hub.",
+  "requestFramePermissions": []
+}
