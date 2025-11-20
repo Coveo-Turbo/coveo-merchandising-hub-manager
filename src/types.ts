@@ -1,3 +1,4 @@
+
 export interface ConfigState {
   organizationId: string;
   trackingId: string;
@@ -33,6 +34,7 @@ export interface ListingPageApiPageRuleModel {
 }
 
 export interface PublicListingPageRequestModel {
+  id?: string;
   name: string;
   trackingId: string;
   patterns: MatchingConfigurationModel[];
