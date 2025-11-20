@@ -169,3 +169,63 @@ export const updateGlobalListingConfig = async (config: ConfigState, data: any) 
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 };
+
+// Global Recommendations Configuration
+export const getGlobalRecommendationsConfig = async (config: ConfigState) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/recommendations/global?trackingId=${config.trackingId}`;
+  const response = await fetch(url, {
+    headers: { 
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Accept': 'application/json' 
+    }
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};
+
+export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: any) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/recommendations/global`;
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};
+
+// Global Product Suggest Configuration
+export const getGlobalProductSuggestConfig = async (config: ConfigState) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/product-suggest/global?trackingId=${config.trackingId}`;
+  const response = await fetch(url, {
+    headers: { 
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Accept': 'application/json' 
+    }
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};
+
+export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: any) => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/product-suggest/global`;
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+};

@@ -1,0 +1,10 @@
+Name,UrlPattern,FilterField,FilterValue,Language,Country
+B311 - Top Fuel,https://www.trekbikes.com/ca/en_CA/bikes/mountain-bikes/trail-mountain-bikes/top-fuel/c/B311/,ec_category,Bikes|Mountain bikes|Trail mountain bikes|Top Fuel,en,CA
+B341 - Slash,https://www.trekbikes.com/ca/en_CA/bikes/mountain-bikes/trail-mountain-bikes/slash/c/B341/,ec_category,Bikes|Mountain bikes|Trail mountain bikes|Slash,en,CA
+B332 - Fuel EX,https://www.trekbikes.com/ca/en_CA/bikes/mountain-bikes/trail-mountain-bikes/fuel-ex/c/B332/,ec_category,Bikes|Mountain bikes|Trail mountain bikes|Fuel EX,en,CA
+B330 - Trail mountain bikes,https://www.trekbikes.com/ca/en_CA/bikes/mountain-bikes/trail-mountain-bikes/c/B330/,ec_category,Bikes|Mountain bikes|Trail mountain bikes,en,CA
+B330 - Trail mountain bikes,https://www.trekbikes.com/ca/fr_CA/vélos/vtt/vtt-trail/c/B330/,ec_category,Vélos|VTT|VTT Trail,fr,CA
+B300 - Mountain bikes,https://www.trekbikes.com/ca/en_CA/bikes/mountain-bikes/c/B300/,ec_category,Bikes|Mountain bikes,en,CA
+B300 - Mountain bikes,https://www.trekbikes.com/ca/fr_CA/vélos/vtt/c/B300/,ec_category,Vélos|VTT,fr,CA
+B100 - Bikes,https://www.trekbikes.com/ca/en_CA/bikes/c/B100/,ec_category,Bikes,en,CA
+B100 - Bikes,https://www.trekbikes.com/ca/fr_CA/vélos/c/B100/,ec_category,Vélos,fr,CA

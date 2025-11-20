@@ -37,7 +37,6 @@ const App: React.FC = () => {
   });
 
   // Wizard Data State
-  const [parsedData, setParsedData] = useState<CsvRow[]>([]);
   const [mappedListings, setMappedListings] = useState<PublicListingPageRequestModel[]>([]);
 
   // Global Config State
@@ -75,7 +74,6 @@ const App: React.FC = () => {
              return;
         }
         
-        setParsedData(rows);
         mapRowsToListings(rows);
         setStep(3);
         setStatus(null);
@@ -555,7 +553,7 @@ const App: React.FC = () => {
                         Your listing configurations have been successfully pushed to the Coveo Merchandising Hub.
                     </p>
                     <button 
-                        onClick={() => { setStep(2); setMappedListings([]); setParsedData([]); }}
+                        onClick={() => { setStep(2); setMappedListings([]); }}
                         className="px-8 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition shadow-lg font-medium"
                     >
                         Start New Import

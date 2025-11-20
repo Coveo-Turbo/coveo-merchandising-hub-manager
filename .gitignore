@@ -24,3 +24,12 @@ dist-ssr
 *.sw?
 
 .env
+
+# Ignore everything in .gemini by default
+.gemini/*
+
+# But explicitly allow the context/instruction files
+!.gemini/GEMINI.md
+!.gemini/instructions.md
+!.gemini/schema.json  <-- If you stored your schema here
+!.gemini/.geminiignore
