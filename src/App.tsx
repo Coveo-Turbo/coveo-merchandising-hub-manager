@@ -22,12 +22,18 @@ import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { 
     Upload, FileText, Settings, Play, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages
 } from 'lucide-react';
 import Papa from 'papaparse';
 
 type AppView = 'wizard' | 'global-config' | 'maintenance';
 type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
+
+interface SharedSettings {
+    perPage?: number;
+    additionalFields?: string[];
+    sorts?: any[];
+}
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('wizard');
@@ -52,6 +58,15 @@ const App: React.FC = () => {
   const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
   const [globalConfigData, setGlobalConfigData] = useState<any>(null);
   const [globalConfigString, setGlobalConfigString] = useState<string>('');
+  
+  // Shared Settings Clipboard
+  const [sharedSettings, setSharedSettings] = useState<SharedSettings | null>(null);
+  
+  // Sort UI State
+  const [pendingSortLabels, setPendingSortLabels] = useState<{language: string, value: string}[]>([]);
+  const [pendingSortLang, setPendingSortLang] = useState('en');
+  const [pendingSortLabelValue, setPendingSortLabelValue] = useState('');
+
 
   // Developer Mode Trigger (URL or Easter Egg)
   useEffect(() => {
@@ -411,6 +426,40 @@ const App: React.FC = () => {
         setGlobalConfigString(JSON.stringify(newData, null, 2));
     };
 
+    const handleCopySettings = () => {
+        const settings: SharedSettings = {
+            perPage: qc.perPage,
+            additionalFields: qc.additionalFields || [],
+            sorts: qc.sorts
+        };
+        setSharedSettings(settings);
+        setStatus({ type: 'success', message: 'Settings copied to clipboard' });
+    };
+
+    const handlePasteSettings = () => {
+        if (!sharedSettings) return;
+        
+        let newQc = { ...qc };
+        if (sharedSettings.perPage !== undefined) newQc.perPage = sharedSettings.perPage;
+        if (sharedSettings.additionalFields) newQc.additionalFields = sharedSettings.additionalFields;
+        
+        // Only paste sorts if allowed for this type
+        if (!['recommendation', 'product-suggest'].includes(globalConfigType) && sharedSettings.sorts) {
+            newQc.sorts = sharedSettings.sorts;
+        }
+
+        let newData;
+        if (globalConfigData.queryConfiguration) {
+            newData = { ...globalConfigData, queryConfiguration: newQc };
+        } else {
+            newData = { ...globalConfigData, ...newQc };
+        }
+
+        setGlobalConfigData(newData);
+        setGlobalConfigString(JSON.stringify(newData, null, 2));
+        setStatus({ type: 'success', message: 'Settings applied from clipboard' });
+    };
+
     const addListString = (listKey: string, value: string) => {
         if (!value) return;
         const currentList = qc[listKey] || [];
@@ -427,7 +476,7 @@ const App: React.FC = () => {
     // Sort Handlers
     const sorts = qc.sorts || [];
     
-    const addSort = (criteria: string, field?: string, direction?: string, label?: string) => {
+    const addSort = (criteria: string, field?: string, direction?: string) => {
         const newSort = criteria === 'relevance' 
             ? { sortCriteria: 'relevance' }
             : { 
@@ -435,10 +484,12 @@ const App: React.FC = () => {
                 fields: [{ 
                     field, 
                     direction, 
-                    displayNames: [{ language: 'en', value: label || field }] 
+                    displayNames: pendingSortLabels.length > 0 ? pendingSortLabels : [{ language: 'en', value: field }]
                 }] 
             };
         updateField('sorts', [...sorts, newSort]);
+        setPendingSortLabels([]);
+        setPendingSortLabelValue('');
     };
     
     const removeSort = (index: number) => {
@@ -447,9 +498,36 @@ const App: React.FC = () => {
         updateField('sorts', newSorts);
     };
 
+    const addPendingLabel = () => {
+        if (pendingSortLabelValue && pendingSortLang) {
+            setPendingSortLabels([...pendingSortLabels, { language: pendingSortLang, value: pendingSortLabelValue }]);
+            setPendingSortLabelValue('');
+        }
+    };
+
     return (
         <div className="bg-white p-6 border border-gray-200 rounded-xl mb-6 shadow-sm transition-all">
-            <h3 className="text-sm font-bold text-coveo-dark mb-4 border-b pb-2 uppercase tracking-wide">Common Settings</h3>
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+                 <h3 className="text-sm font-bold text-coveo-dark uppercase tracking-wide">Common Settings</h3>
+                 <div className="flex space-x-2">
+                    <button 
+                        onClick={handleCopySettings}
+                        className="flex items-center px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                        title="Copy settings"
+                    >
+                        <Copy className="w-3 h-3 mr-1.5" /> Copy
+                    </button>
+                    <button 
+                        onClick={handlePasteSettings}
+                        disabled={!sharedSettings}
+                        className="flex items-center px-3 py-1.5 text-xs font-medium text-coveo-blue bg-blue-50 rounded hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Paste settings"
+                    >
+                        <ClipboardPaste className="w-3 h-3 mr-1.5" /> Paste
+                    </button>
+                 </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Per Page */}
                 <div>
@@ -511,16 +589,24 @@ const App: React.FC = () => {
                     <div className="space-y-2 mb-4">
                         {sorts.length === 0 && <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded-md">No sorts configured.</p>}
                         {sorts.map((sort: any, idx: number) => (
-                            <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-sm text-sm group hover:border-coveo-blue transition-all">
+                            <div key={idx} className="flex items-start justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-sm text-sm group hover:border-coveo-blue transition-all">
                                 <div>
                                     {sort.sortCriteria === 'relevance' ? (
                                         <span className="font-semibold text-gray-700 flex items-center"><Sparkles className="w-3 h-3 mr-2 text-coveo-purple"/>Relevance</span>
                                     ) : (
-                                        <span className="text-gray-700">
-                                            <span className="font-semibold text-coveo-blue">{sort.fields?.[0]?.displayNames?.[0]?.value || sort.fields?.[0]?.field}</span> 
-                                            <span className="text-gray-400 mx-2">|</span>
-                                            <span className="uppercase text-xs font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{sort.fields?.[0]?.direction}</span>
-                                        </span>
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center mb-1">
+                                                <span className="font-semibold text-coveo-blue mr-2">{sort.fields?.[0]?.field}</span> 
+                                                <span className="uppercase text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{sort.fields?.[0]?.direction}</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {sort.fields?.[0]?.displayNames?.map((dn: any, dnIdx: number) => (
+                                                    <span key={dnIdx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-gray-50 text-gray-600 border border-gray-200">
+                                                        <span className="font-bold mr-1">{dn.language}:</span> {dn.value}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                                 <button onClick={() => removeSort(idx)} className="text-gray-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-colors">
@@ -531,27 +617,64 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Add New Sort */}
-                    <div className="flex gap-2 items-end p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex-1">
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-                            <select id="newSortType" className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-coveo-blue">
-                                <option value="relevance">Relevance</option>
-                                <option value="field">Field</option>
-                            </select>
-                        </div>
-                        <div className="flex-[2] flex gap-2" id="fieldInputs">
-                            <div className="w-full">
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
+                                <select id="newSortType" className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-coveo-blue">
+                                    <option value="relevance">Relevance</option>
+                                    <option value="field">Field</option>
+                                </select>
+                            </div>
+                            <div className="flex-[2]" id="fieldInputs">
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Field Name</label>
                                 <input type="text" id="newSortField" placeholder="e.g. ec_price" className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-coveo-blue" />
                             </div>
-                             <div>
+                            <div className="w-24">
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Order</label>
-                                <select id="newSortDir" className="w-24 p-2 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-coveo-blue">
+                                <select id="newSortDir" className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-coveo-blue">
                                     <option value="desc">Desc</option>
                                     <option value="asc">Asc</option>
                                 </select>
-                             </div>
+                            </div>
                         </div>
+
+                        {/* Display Name Builder */}
+                        <div id="labelInputs" className="pt-2 border-t border-gray-200">
+                             <label className="block text-xs font-medium text-gray-500 mb-2 flex items-center">
+                                <Languages className="w-3 h-3 mr-1"/> Display Names (Required for Field Sort)
+                             </label>
+                             <div className="flex gap-2 mb-2">
+                                <input 
+                                    type="text" 
+                                    className="w-16 p-2 border border-gray-300 rounded-md text-sm text-center" 
+                                    placeholder="en" 
+                                    value={pendingSortLang}
+                                    onChange={(e) => setPendingSortLang(e.target.value)}
+                                />
+                                <input 
+                                    type="text" 
+                                    className="flex-1 p-2 border border-gray-300 rounded-md text-sm" 
+                                    placeholder="Label (e.g. Price)" 
+                                    value={pendingSortLabelValue}
+                                    onChange={(e) => setPendingSortLabelValue(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && addPendingLabel()}
+                                />
+                                <button onClick={addPendingLabel} className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs font-bold"><Plus className="w-3 h-3"/></button>
+                             </div>
+                             
+                             {pendingSortLabels.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {pendingSortLabels.map((lbl, idx) => (
+                                        <span key={idx} className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-50 text-blue-700 border border-blue-100">
+                                            <span className="font-bold mr-1">{lbl.language}:</span> {lbl.value}
+                                            <button onClick={() => setPendingSortLabels(pendingSortLabels.filter((_, i) => i !== idx))} className="ml-1.5 hover:text-red-500"><X className="w-3 h-3"/></button>
+                                        </span>
+                                    ))}
+                                </div>
+                             )}
+                        </div>
+
                         <button 
                             onClick={() => {
                                 const type = (document.getElementById('newSortType') as HTMLSelectElement).value;
@@ -561,15 +684,18 @@ const App: React.FC = () => {
                                     const field = (document.getElementById('newSortField') as HTMLInputElement).value;
                                     const dir = (document.getElementById('newSortDir') as HTMLSelectElement).value;
                                     if (field) {
-                                        const label = prompt("Enter display label (e.g. Price):", field);
-                                        addSort('fields', field, dir || 'desc', label || field);
+                                        if (pendingSortLabels.length === 0) {
+                                            alert("Please add at least one Display Name.");
+                                            return;
+                                        }
+                                        addSort('fields', field, dir || 'desc');
                                         (document.getElementById('newSortField') as HTMLInputElement).value = '';
                                     }
                                 }
                             }}
-                            className="h-9 px-4 bg-coveo-blue text-white rounded-md hover:bg-blue-800 shadow-sm text-sm font-medium transition-colors"
+                            className="w-full h-9 bg-coveo-blue text-white rounded-md hover:bg-blue-800 shadow-sm text-sm font-medium transition-colors"
                         >
-                            Add
+                            Add Sort Configuration
                         </button>
                     </div>
                 </div>
