@@ -1,5 +1,5 @@
 
-import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
+import { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
 
 const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
 
@@ -240,7 +240,8 @@ export const getGlobalProductSuggestConfig = async (config: ConfigState) => {
 
 export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest`;
+  // Fixed: Add trackingId to query params as required by API for PUT
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${config.trackingId}`;
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
@@ -287,7 +288,8 @@ export const getGlobalRecommendationsConfig = async (config: ConfigState) => {
 
 export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/recommendations/slots/global/query-configuration`;
+  // Fixed: Add trackingId to query params as required by API for PUT
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${config.trackingId}`;
   const response = await fetch(url, {
     method: 'PUT',
     headers: {

@@ -388,7 +388,10 @@ const App: React.FC = () => {
              try {
                 await updateGlobalProductSuggestConfig(config, parsedData);
              } catch (e: any) {
-                 // If update fails, try create
+                 console.warn("Product Suggest Update failed, attempting creation. Error:", e);
+                 // If update fails, try create. 
+                 // Note: Update might fail with 404 (if new) or 400 (if malformed). 
+                 // If malformed, Create will likely fail too.
                  await createGlobalProductSuggestConfig(config, parsedData);
              }
           } else if (globalConfigType === 'recommendation') {
