@@ -11,6 +11,8 @@
   --color-coveo-dark: #162035;
   --color-coveo-blue: #004990;
   --color-coveo-light: #F6F7F9;
+  --color-coveo-purple: #7933FF;
+  --font-sans: "Inter", sans-serif; /* Ensure Inter is installed or imported */
 }
 
 /* :root {
