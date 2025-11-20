@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Steps } from './components/Steps';
 import type { ConfigState, CsvRow, PublicListingPageRequestModel, ListingPageApiPageRuleModel } from './types';
 import { 
@@ -8,17 +9,23 @@ import {
     getGlobalSearchConfig, 
     updateGlobalSearchConfig, 
     getGlobalListingConfig, 
-    updateGlobalListingConfig 
+    updateGlobalListingConfig,
+    getGlobalProductSuggestConfig,
+    updateGlobalProductSuggestConfig,
+    getGlobalRecommendationsConfig,
+    updateGlobalRecommendationsConfig
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
+import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { 
     Upload, FileText, Settings, Play, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X
+    Menu, X, Bug
 } from 'lucide-react';
 import Papa from 'papaparse';
 
 type AppView = 'wizard' | 'global-config' | 'maintenance';
+type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('wizard');
@@ -27,6 +34,10 @@ const App: React.FC = () => {
   const [status, setStatus] = useState<{type: 'success'|'error'|'info', message: string} | null>(null);
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Developer Mode State
+  const [devMode, setDevMode] = useState(false);
+  const [versionClickCount, setVersionClickCount] = useState(0);
   
   // Configuration State
   const [config, setConfig] = useState<ConfigState>({
@@ -40,10 +51,30 @@ const App: React.FC = () => {
   const [mappedListings, setMappedListings] = useState<PublicListingPageRequestModel[]>([]);
 
   // Global Config State
-  const [globalConfigType, setGlobalConfigType] = useState<'search' | 'listing'>('search');
+  const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
   const [jsonConfig, setJsonConfig] = useState<string>('');
 
   const isConfigValid = config.organizationId && config.trackingId && config.accessToken;
+
+  // Check for demo mode in URL on mount
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('demo') === 'true') {
+        setDevMode(true);
+    }
+  }, []);
+
+  // --- Developer Mode Handler ---
+  const handleVersionClick = () => {
+      const newCount = versionClickCount + 1;
+      setVersionClickCount(newCount);
+      if (newCount === 5) {
+          setDevMode(!devMode);
+          setVersionClickCount(0);
+          setStatus({ type: 'info', message: `Developer Mode ${!devMode ? 'Enabled' : 'Disabled'}` });
+          setTimeout(() => setStatus(null), 3000);
+      }
+  };
 
   // --- Wizard Handlers ---
   const handleConfigSubmit = (e: React.FormEvent) => {
@@ -52,6 +83,31 @@ const App: React.FC = () => {
       setStep(2);
     } else {
       setStatus({type: 'error', message: 'Please fill in all required fields.'});
+    }
+  };
+
+  const handleStepClick = (targetStep: number) => {
+      // Allow going back, or going forward only if on submitting step (to prevent skipping upload)
+      // Simplification: Allow clicking any previous step.
+      if (targetStep < step) {
+          setStep(targetStep);
+      }
+  };
+
+  const loadSampleConfig = (sampleName: string) => {
+    const sample = SAMPLE_CONFIGS.find(s => s.name === sampleName);
+    if (sample) {
+        setConfig({
+            ...config,
+            organizationId: sample.organizationId,
+            trackingId: sample.trackingId,
+            platformUrl: sample.platformUrl,
+            // Use the env token if available, otherwise empty string requiring user input
+            accessToken: sample.accessToken || '' 
+        });
+        
+        const tokenStatus = sample.accessToken ? "Token loaded from environment." : "Please provide Access Token.";
+        setStatus({ type: 'info', message: `Loaded sample: ${sample.name}. ${tokenStatus}` });
     }
   };
 
@@ -184,9 +240,37 @@ const App: React.FC = () => {
       setJsonConfig('');
       setStatus(null);
       try {
-          const data = globalConfigType === 'search' 
-            ? await getGlobalSearchConfig(config) 
-            : await getGlobalListingConfig(config);
+          let data;
+          switch (globalConfigType) {
+            case 'search':
+                data = await getGlobalSearchConfig(config);
+                break;
+            case 'listing':
+                data = await getGlobalListingConfig(config);
+                break;
+            case 'product-suggest':
+                try {
+                    data = await getGlobalProductSuggestConfig(config);
+                } catch (error: any) {
+                    if (error.message && error.message.includes("PRODUCT_SUGGEST_CONFIGURATION_NOT_FOUND")) {
+                        setStatus({ type: 'info', message: "Configuration not found. Loaded template for creation." });
+                        data = {
+                            trackingId: config.trackingId,
+                            queryConfiguration: {
+                                additionalFields: [],
+                                facets: { facets: [] },
+                                sorts: []
+                            }
+                        };
+                    } else {
+                        throw error;
+                    }
+                }
+                break;
+            case 'recommendation':
+                data = await getGlobalRecommendationsConfig(config);
+                break;
+          }
           setJsonConfig(JSON.stringify(data, null, 2));
       } catch (e) {
           setStatus({ type: 'error', message: `Failed to fetch config: ${(e as Error).message}` });
@@ -200,10 +284,19 @@ const App: React.FC = () => {
       setStatus(null);
       try {
           const payload = JSON.parse(jsonConfig);
-          if (globalConfigType === 'search') {
-              await updateGlobalSearchConfig(config, payload);
-          } else {
-              await updateGlobalListingConfig(config, payload);
+          switch (globalConfigType) {
+            case 'search':
+                await updateGlobalSearchConfig(config, payload);
+                break;
+            case 'listing':
+                await updateGlobalListingConfig(config, payload);
+                break;
+            case 'product-suggest':
+                 await updateGlobalProductSuggestConfig(config, payload);
+                break;
+            case 'recommendation':
+                await updateGlobalRecommendationsConfig(config, payload);
+                break;
           }
           setStatus({ type: 'success', message: 'Configuration updated successfully.' });
       } catch (e) {
@@ -266,7 +359,10 @@ const App: React.FC = () => {
                         <select
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue focus:border-transparent outline-none transition bg-white appearance-none"
                             value={config.platformUrl}
-                            onChange={e => setConfig({...config, platformUrl: e.target.value})}
+                            onChange={e => {
+                                setConfig({...config, platformUrl: e.target.value});
+                                setStatus(null);
+                            }}
                         >
                             <option value="https://platform.cloud.coveo.com">US (platform.cloud.coveo.com)</option>
                             <option value="https://platform-ca.cloud.coveo.com">Canada (platform-ca.cloud.coveo.com)</option>
@@ -282,7 +378,10 @@ const App: React.FC = () => {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue focus:border-transparent outline-none transition"
                         placeholder="e.g. myorg"
                         value={config.organizationId}
-                        onChange={e => setConfig({...config, organizationId: e.target.value})}
+                        onChange={e => {
+                            setConfig({...config, organizationId: e.target.value});
+                            setStatus(null);
+                        }}
                     />
                 </div>
                 <div className="col-span-1">
@@ -292,7 +391,10 @@ const App: React.FC = () => {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue focus:border-transparent outline-none transition"
                         placeholder="e.g. mycommerce_store"
                         value={config.trackingId}
-                        onChange={e => setConfig({...config, trackingId: e.target.value})}
+                        onChange={e => {
+                            setConfig({...config, trackingId: e.target.value});
+                            setStatus(null);
+                        }}
                     />
                 </div>
             </div>
@@ -303,13 +405,36 @@ const App: React.FC = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue focus:border-transparent outline-none transition"
                     placeholder="xx..."
                     value={config.accessToken}
-                    onChange={e => setConfig({...config, accessToken: e.target.value})}
+                    onChange={e => {
+                        setConfig({...config, accessToken: e.target.value});
+                        setStatus(null);
+                    }}
                 />
                  <p className="text-xs text-gray-400 mt-1">Required privileges: Merchandising Hub - Edit</p>
             </div>
-            <button type="submit" className="w-full bg-coveo-blue hover:bg-blue-800 text-white font-semibold py-3 rounded-lg transition shadow-lg flex justify-center items-center gap-2">
-                Connect <ArrowRight className="h-4 w-4" />
-            </button>
+            <div className="flex gap-4">
+                {devMode && (
+                    <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm flex items-center px-3 relative">
+                        <Bug className="h-4 w-4 text-yellow-700 absolute left-3 pointer-events-none" />
+                        <select 
+                            onChange={(e) => loadSampleConfig(e.target.value)}
+                            className="w-full pl-8 pr-2 py-3 bg-transparent text-yellow-800 font-semibold text-sm focus:outline-none cursor-pointer appearance-none"
+                            defaultValue=""
+                        >
+                             <option value="" disabled>Load Sample...</option>
+                             {SAMPLE_CONFIGS.map(s => (
+                                 <option key={s.name} value={s.name}>{s.name}</option>
+                             ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-yellow-700">
+                             <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                        </div>
+                    </div>
+                )}
+                <button type="submit" className="flex-1 bg-coveo-blue hover:bg-blue-800 text-white font-semibold py-3 rounded-lg transition shadow-lg flex justify-center items-center gap-2">
+                    Connect <ArrowRight className="h-4 w-4" />
+                </button>
+            </div>
         </form>
     </div>
   );
@@ -317,23 +442,35 @@ const App: React.FC = () => {
   const renderGlobalConfig = () => (
       <div className="space-y-6">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                   <div>
                       <h3 className="text-lg font-bold text-slate-800">Global Configuration Manager</h3>
                       <p className="text-sm text-gray-500">View and edit global configurations directly.</p>
                   </div>
-                  <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <div className="flex flex-wrap gap-2 bg-gray-100 p-1 rounded-lg">
                       <button 
                           onClick={() => setGlobalConfigType('search')}
-                          className={`px-4 py-2 text-sm font-medium rounded-md transition ${globalConfigType === 'search' ? 'bg-white shadow-sm text-coveo-blue' : 'text-gray-500 hover:text-gray-700'}`}
+                          className={`px-3 py-2 text-xs font-medium rounded-md transition ${globalConfigType === 'search' ? 'bg-white shadow-sm text-coveo-blue' : 'text-gray-500 hover:text-gray-700'}`}
                       >
-                          Search Config
+                          Search
                       </button>
                       <button 
                           onClick={() => setGlobalConfigType('listing')}
-                          className={`px-4 py-2 text-sm font-medium rounded-md transition ${globalConfigType === 'listing' ? 'bg-white shadow-sm text-coveo-blue' : 'text-gray-500 hover:text-gray-700'}`}
+                          className={`px-3 py-2 text-xs font-medium rounded-md transition ${globalConfigType === 'listing' ? 'bg-white shadow-sm text-coveo-blue' : 'text-gray-500 hover:text-gray-700'}`}
                       >
-                          Listing Config
+                          Listing
+                      </button>
+                      <button 
+                          onClick={() => setGlobalConfigType('product-suggest')}
+                          className={`px-3 py-2 text-xs font-medium rounded-md transition ${globalConfigType === 'product-suggest' ? 'bg-white shadow-sm text-coveo-blue' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                          Prod. Suggest
+                      </button>
+                       <button 
+                          onClick={() => setGlobalConfigType('recommendation')}
+                          className={`px-3 py-2 text-xs font-medium rounded-md transition ${globalConfigType === 'recommendation' ? 'bg-white shadow-sm text-coveo-blue' : 'text-gray-500 hover:text-gray-700'}`}
+                      >
+                          Recommendations
                       </button>
                   </div>
               </div>
@@ -358,7 +495,9 @@ const App: React.FC = () => {
               </div>
 
               <div className="relative">
-                  <div className="absolute top-0 right-0 bg-gray-100 px-3 py-1 text-xs text-gray-500 rounded-bl-lg border-b border-l border-gray-200 font-mono">JSON Editor</div>
+                  <div className="absolute top-0 right-0 bg-gray-100 px-3 py-1 text-xs text-gray-500 rounded-bl-lg border-b border-l border-gray-200 font-mono">
+                      {globalConfigType.toUpperCase().replace('-', ' ')} JSON Editor
+                  </div>
                   <textarea 
                       className="w-full h-[500px] font-mono text-sm p-4 bg-slate-900 text-slate-50 rounded-lg focus:ring-2 focus:ring-coveo-blue focus:border-transparent outline-none resize-y"
                       value={jsonConfig}
@@ -433,7 +572,7 @@ const App: React.FC = () => {
   const renderWizard = () => (
       <>
         <div className="mb-12">
-           <Steps currentStep={step} />
+           <Steps currentStep={step} onStepClick={handleStepClick} />
         </div>
         <div className="bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden min-h-[400px]">
             {/* Step 2: Upload */}
@@ -608,7 +747,12 @@ const App: React.FC = () => {
                         </div>
                         </button>
                     </nav>
-                    <div className="text-xs text-gray-500 border-l border-gray-700 pl-6">V1.1</div>
+                    <div 
+                        className="text-xs text-gray-500 border-l border-gray-700 pl-6 cursor-pointer select-none flex items-center gap-1 hover:text-gray-300 transition-colors" 
+                        onClick={handleVersionClick}
+                    >
+                        V1.1 {devMode && <Bug className="h-3 w-3 text-green-400" />}
+                    </div>
                 </div>
 
                 {/* Mobile Menu Button */}
@@ -657,8 +801,8 @@ const App: React.FC = () => {
                         </div>
                     </button>
                 </div>
-                <div className="pt-4 pb-3 border-t border-gray-700">
-                    <div className="px-5 text-xs text-gray-500">Version 1.1</div>
+                <div className="pt-4 pb-3 border-t border-gray-700 flex justify-between items-center px-5">
+                    <div className="text-xs text-gray-500" onClick={handleVersionClick}>Version 1.1 {devMode && ' (Dev)'}</div>
                 </div>
             </div>
         )}
