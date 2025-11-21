@@ -89,7 +89,6 @@ export const bulkUpdateListings = async (
         try {
             const errorJson = JSON.parse(errorText);
             if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
             errorMessage += `: ${errorText}`;
         }
@@ -165,6 +164,50 @@ export const bulkDeleteListings = async (config: ConfigState, ids: string[]) => 
   }
 };
 
+// Search API V2 - List Field Values
+export const listFieldValues = async (
+  config: ConfigState,
+  field: string,
+  catalogId?: string,
+  limit: number = 100
+) => {
+  const baseUrl = getBaseUrl(config);
+  // organizationId must be a query param for Search API V2
+  const url = `${baseUrl}/rest/search/v2/values?organizationId=${config.organizationId}`;
+
+  const body: any = {
+    field,
+    maximumNumberOfValues: limit,
+    sortCriteria: 'occurrences'
+  };
+
+  if (catalogId) {
+    body.commerce = {
+      catalogId,
+      operation: "selectCatalogObjects"
+    };
+    body.queryOverride=`@source==${catalogId}`;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to fetch values: ${errorText}`);
+  }
+
+  return response.json();
+};
+
+
 // Global Search Configuration
 export const getGlobalSearchConfig = async (config: ConfigState) => {
   const baseUrl = getBaseUrl(config);
@@ -179,7 +222,7 @@ export const getGlobalSearchConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalSearchConfig = async (config: ConfigState, data: unknown) => {
+export const updateGlobalSearchConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/search/global`;
   const response = await fetch(url, {
@@ -209,7 +252,7 @@ export const getGlobalListingConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalListingConfig = async (config: ConfigState, data: unknown) => {
+export const updateGlobalListingConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/listings/global`;
   const response = await fetch(url, {
@@ -239,7 +282,7 @@ export const getGlobalProductSuggestConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: unknown) => {
+export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
   // Fixed: Add trackingId to query params as required by API for PUT
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${config.trackingId}`;
@@ -256,7 +299,7 @@ export const updateGlobalProductSuggestConfig = async (config: ConfigState, data
   return response.json();
 };
 
-export const createGlobalProductSuggestConfig = async (config: ConfigState, data: unknown) => {
+export const createGlobalProductSuggestConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest`;
   const response = await fetch(url, {
@@ -287,7 +330,7 @@ export const getGlobalRecommendationsConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: unknown) => {
+export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: any) => {
   const baseUrl = getBaseUrl(config);
   // Fixed: Add trackingId to query params as required by API for PUT
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${config.trackingId}`;

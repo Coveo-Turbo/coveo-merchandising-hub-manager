@@ -1,3 +1,4 @@
+
 # Coveo Merchandising Hub Manager - Project Context
 
 This document serves as a "context dump" for AI assistants (Gemini, Copilot, Cursor) to understand the project's architecture, history, and business logic.
@@ -17,14 +18,10 @@ This document serves as a "context dump" for AI assistants (Gemini, Copilot, Cur
 *   **State Management:** Local React State (`useState`)
 *   **Build System:** Vite
 
-## API & Data Structure
-* **Source of Truth:** The API definition is located in `.gemini/CommerceService_schema.json`.
-* **Protocol:** If I ask for code that interfaces with the API, you must ask me to "include the schema context" unless I have already used `@.gemini/CommerceService_schema.json` in the prompt.
-
 ## Architecture
 
 ### 1. Key Components (`App.tsx`)
-The application is a Single Page Application (SPA) with three main views managed by state:
+The application is a Single Page Application (SPA) with four main views managed by state:
 
 1.  **Import Wizard (`view === 'wizard'`)**:
     *   **Step 1: Configuration**: User inputs credentials (Org ID, Tracking ID, Token) and selects Platform Region (US, CA, EU, AU).
@@ -32,11 +29,16 @@ The application is a Single Page Application (SPA) with three main views managed
     *   **Step 3: Preview**: Logic to map CSV rows to API models, AI rule suggestion button.
     *   **Step 4: Submit**: Pushes data to Coveo API.
 
-2.  **Global Config (`view === 'global-config'`)**:
-    *   Fetches Global Search or Listing Configuration JSON.
-    *   Provides a text area for direct JSON editing and updating.
+2.  **Category Generator (`view === 'generator'`)**:
+    *   Fetches field values (e.g., `@ec_category`) from Coveo Search API V2.
+    *   Allows selection of values to auto-generate listing pages.
+    *   Supports URL pattern templates (e.g., `{{value}}`, `{{value_slug}}`).
 
-3.  **Maintenance (`view === 'maintenance'`)**:
+3.  **Global Config (`view === 'global-config'`)**:
+    *   Fetches/Updates JSON for Search/Listing/Product Suggest/Recommendation configurations.
+    *   Provides a "Common Settings" UI and text area for direct JSON editing.
+
+4.  **Maintenance (`view === 'maintenance'`)**:
     *   **Bulk Delete**: Fetches *all* listing IDs via pagination and deletes them in chunks.
     *   **UI**: Uses a custom two-step button confirmation (no native `window.confirm`).
 
@@ -45,7 +47,8 @@ The application is a Single Page Application (SPA) with three main views managed
 *   **Rate Limiting/Chunking**:
     *   `bulkCreateListings`: Splits payloads into chunks of 50 items.
     *   `bulkDeleteListings`: Splits IDs into chunks of 50 items.
-*   **Pagination**: `fetchAllListingIds` iterates through all pages to gather IDs for deletion.
+*   **Search API**: `listFieldValues` calls V2 Search API to get category values.
+*   **Pagination**: `fetchAllListings` iterates through all pages to gather data for deletion or upsert checks.
 *   **Caching**: Explicit `cache: 'no-store'` headers to ensure fresh data for delete operations.
 
 ### 3. Data Logic (`types.ts` & `App.tsx`)
@@ -69,12 +72,13 @@ The application is a Single Page Application (SPA) with three main views managed
     *   Implemented row-merging logic based on Page Name.
 4.  **New Views**: Added "Global Config" and "Maintenance" tabs.
 5.  **Maintenance Fixes**:
-    *   Implemented `fetchAllListingIds` loop.
+    *   Implemented `fetchAllListings` loop.
     *   Fixed `window.confirm` sandbox errors by building a custom UI confirmation.
 6.  **UI Polish**:
     *   Renamed to "Coveo Merchandising Hub Manager".
     *   Added Mobile Navigation menu.
 7.  **Migration**: Migrated Tailwind configuration to v4 standards (CSS variables in `index.css`, removed `tailwind.config.js`).
+8.  **Feature**: Added Category Listing Generator using Search API V2.
 
 ## Setup for Local Development (Vite)
 
@@ -97,7 +101,7 @@ The application is a Single Page Application (SPA) with three main views managed
 
 *Copy and paste this section when starting a new chat in Cursor/VS Code to prime the AI:*
 
-> "I am working on the **Coveo Merchandising Hub Manager**, a React/Vite app for managing e-commerce configurations. The app uses a wizard flow for CSV uploads, parsing specific columns (Name, UrlPattern, FilterField, Locale) into Coveo API JSON models. It also supports Global JSON config editing and bulk deletion of listings.
+> "I am working on the **Coveo Merchandising Hub Manager**, a React/Vite app for managing e-commerce configurations. The app uses a wizard flow for CSV uploads, parsing specific columns (Name, UrlPattern, FilterField, Locale) into Coveo API JSON models. It also supports Global JSON config editing, Category Generation via Search API, and bulk deletion of listings.
 >
 > **Current State**:
 > - Tailwind v4 is used (CSS variables).
