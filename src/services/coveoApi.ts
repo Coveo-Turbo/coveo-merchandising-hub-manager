@@ -1,5 +1,5 @@
 
-import { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
+import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
 
 const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
 
@@ -89,6 +89,7 @@ export const bulkUpdateListings = async (
         try {
             const errorJson = JSON.parse(errorText);
             if (errorJson.message) errorMessage += `: ${errorJson.message}`;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (e) {
             errorMessage += `: ${errorText}`;
         }
@@ -178,7 +179,7 @@ export const getGlobalSearchConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalSearchConfig = async (config: ConfigState, data: any) => {
+export const updateGlobalSearchConfig = async (config: ConfigState, data: unknown) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/search/global`;
   const response = await fetch(url, {
@@ -208,7 +209,7 @@ export const getGlobalListingConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalListingConfig = async (config: ConfigState, data: any) => {
+export const updateGlobalListingConfig = async (config: ConfigState, data: unknown) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/listings/global`;
   const response = await fetch(url, {
@@ -238,7 +239,7 @@ export const getGlobalProductSuggestConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: any) => {
+export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: unknown) => {
   const baseUrl = getBaseUrl(config);
   // Fixed: Add trackingId to query params as required by API for PUT
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${config.trackingId}`;
@@ -255,7 +256,7 @@ export const updateGlobalProductSuggestConfig = async (config: ConfigState, data
   return response.json();
 };
 
-export const createGlobalProductSuggestConfig = async (config: ConfigState, data: any) => {
+export const createGlobalProductSuggestConfig = async (config: ConfigState, data: unknown) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest`;
   const response = await fetch(url, {
@@ -286,7 +287,7 @@ export const getGlobalRecommendationsConfig = async (config: ConfigState) => {
   return response.json();
 };
 
-export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: any) => {
+export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: unknown) => {
   const baseUrl = getBaseUrl(config);
   // Fixed: Add trackingId to query params as required by API for PUT
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${config.trackingId}`;

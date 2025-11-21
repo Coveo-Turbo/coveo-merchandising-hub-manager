@@ -20,7 +20,7 @@ import {
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { 
-    Upload, FileText, Settings, Play, Sparkles, AlertCircle, CheckCircle, 
+    Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
     Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages
 } from 'lucide-react';
@@ -32,7 +32,7 @@ type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendati
 interface SharedSettings {
     perPage?: number;
     additionalFields?: string[];
-    sorts?: any[];
+    sorts?: unknown[];
 }
 
 const App: React.FC = () => {
