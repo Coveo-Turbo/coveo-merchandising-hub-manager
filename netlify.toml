@@ -1,0 +1,25 @@
+[build]
+  # The command to build your Vite app
+  command = "npm run build"
+  # The directory where Vite outputs the build (Vite defaults to 'dist')
+  publish = "dist"
+
+# ---------------------------------------------------
+# RULE 1: API Rewrite (Must come BEFORE the SPA rule)
+# ---------------------------------------------------
+# This allows you to make requests to '/api/hello' in your frontend,
+# and Netlify silently proxies it to '/.netlify/functions/hello'.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# ---------------------------------------------------
+# RULE 2: SPA Catch-all (Client-Side Routing)
+# ---------------------------------------------------
+# This ensures that if a user refreshes on a route like '/dashboard',
+# Netlify serves index.html instead of a 404, allowing React to handle the route.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
