@@ -21,7 +21,7 @@ import {
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { 
-    Upload, FileText, Settings, Play, Sparkles, AlertCircle, CheckCircle, 
+    Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
     Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, Tag
 } from 'lucide-react';
