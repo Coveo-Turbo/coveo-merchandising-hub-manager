@@ -1254,7 +1254,7 @@ const App: React.FC = () => {
                     Coveo Merchandising Hub Manager
                   </h1>
                   <div className="flex items-center space-x-2">
-                      <span onClick={handleVersionClick} className="text-[10px] font-semibold text-gray-400 cursor-default hover:text-coveo-blue tracking-wider">V1.1</span>
+                      <span onClick={handleVersionClick} className="text-[10px] font-semibold text-gray-400 cursor-default hover:text-coveo-blue tracking-wider">V1.2</span>
                       {devMode && <span className="text-[10px] bg-coveo-orange text-white px-1.5 py-0.5 rounded-full font-bold tracking-wide shadow-sm">DEV MODE</span>}
                   </div>
               </div>
