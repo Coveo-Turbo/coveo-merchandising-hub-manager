@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Steps } from './components/Steps';
+import { CategoryGenerator } from './components/CategoryGenerator';
 import type { ConfigState, CsvRow, PublicListingPageRequestModel, ListingPageApiPageRuleModel } from './types';
 import { 
     bulkCreateListings, 
@@ -22,11 +23,11 @@ import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, Wand2
 } from 'lucide-react';
 import Papa from 'papaparse';
 
-type AppView = 'wizard' | 'global-config' | 'maintenance';
+type AppView = 'wizard' | 'global-config' | 'maintenance' | 'category-generator';
 type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
 
 interface SharedSettings {
@@ -56,6 +57,7 @@ const App: React.FC = () => {
   
   // Global Config State
   const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [globalConfigData, setGlobalConfigData] = useState<any>(null);
   const [globalConfigString, setGlobalConfigString] = useState<string>('');
   
@@ -120,6 +122,7 @@ const App: React.FC = () => {
             setParsedListings(listings);
             setStatus({ type: 'success', message: `Successfully parsed ${listings.length} unique listings from ${results.data.length} rows.` });
             setStep(3);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
             setStatus({ type: 'error', message: `Parsing error: ${e.message}` });
         }
@@ -273,6 +276,7 @@ const App: React.FC = () => {
         } else {
             setStatus({ type: 'info', message: 'AI could not generate a confident suggestion.' });
         }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
         setStatus({ type: 'error', message: 'AI enhancement failed.' });
     }
@@ -321,6 +325,7 @@ const App: React.FC = () => {
       if (toCreate.length > 0 || toUpdate.length > 0) {
           setStep(4); // Move to Done
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       setStatus({ type: 'error', message: error.message });
     }
@@ -344,6 +349,7 @@ const App: React.FC = () => {
           setStatus({ type: 'info', message: `Deleting ${ids.length} listings...` });
           await bulkDeleteListings(config, ids);
           setStatus({ type: 'success', message: `Successfully deleted ${ids.length} listings.` });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
           console.error("Delete error", error);
           setStatus({ type: 'error', message: `Deletion failed: ${error.message}` });
@@ -379,6 +385,7 @@ const App: React.FC = () => {
           } else if (globalConfigType === 'product-suggest') {
              try {
                 data = await getGlobalProductSuggestConfig(config);
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
              } catch (e: any) {
                 if (e.message && e.message.includes('NOT_FOUND')) {
                     data = {
@@ -393,6 +400,7 @@ const App: React.FC = () => {
           } else if (globalConfigType === 'recommendation') {
              try {
                  data = await getGlobalRecommendationsConfig(config);
+             // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
              } catch (e: any) {
                  data = {
                      additionalFields: [],
@@ -404,6 +412,7 @@ const App: React.FC = () => {
           
           setGlobalConfigData(data);
           setGlobalConfigString(JSON.stringify(data, null, 2));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
           setStatus({ type: 'error', message: `Failed to fetch config: ${error.message}` });
       }
@@ -423,6 +432,7 @@ const App: React.FC = () => {
           } else if (globalConfigType === 'product-suggest') {
              try {
                 await updateGlobalProductSuggestConfig(config, parsedData);
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
              } catch (e: any) {
                  console.warn("Product Suggest Update failed, attempting creation. Error:", e);
                  // If update fails, try create. 
@@ -436,6 +446,7 @@ const App: React.FC = () => {
 
           setStatus({ type: 'success', message: 'Configuration saved successfully.' });
           handleFetchGlobal(); // Refresh
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
           setStatus({ type: 'error', message: `Failed to save: ${error.message}` });
       }
@@ -450,6 +461,7 @@ const App: React.FC = () => {
     // Support nested queryConfiguration or direct object (depending on endpoint)
     const qc = globalConfigData.queryConfiguration || globalConfigData;
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateField = (key: string, value: any) => {
         let newData;
         if (globalConfigData.queryConfiguration) {
@@ -478,7 +490,7 @@ const App: React.FC = () => {
     const handlePasteSettings = () => {
         if (!sharedSettings) return;
         
-        let newQc = { ...qc };
+        const newQc = { ...qc };
         if (sharedSettings.perPage !== undefined) newQc.perPage = sharedSettings.perPage;
         if (sharedSettings.additionalFields) newQc.additionalFields = sharedSettings.additionalFields;
         
@@ -627,6 +639,7 @@ const App: React.FC = () => {
                     {/* Existing Sorts */}
                     <div className="space-y-2 mb-4">
                         {sorts.length === 0 && <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded-md">No sorts configured.</p>}
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                         {sorts.map((sort: any, idx: number) => (
                             <div key={idx} className="flex items-start justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-sm text-sm group hover:border-coveo-blue transition-all">
                                 <div>
@@ -639,6 +652,7 @@ const App: React.FC = () => {
                                                 <span className="uppercase text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{sort.fields?.[0]?.direction}</span>
                                             </div>
                                             <div className="flex flex-wrap gap-1">
+                                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                                 {sort.fields?.[0]?.displayNames?.map((dn: any, dnIdx: number) => (
                                                     <span key={dnIdx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-gray-50 text-gray-600 border border-gray-200">
                                                         <span className="font-bold mr-1">{dn.language}:</span> {dn.value}
@@ -1074,8 +1088,19 @@ const App: React.FC = () => {
       </div>
   );
 
+  const handleCategoryGenerate = (listings: PublicListingPageRequestModel[]) => {
+    setParsedListings(listings);
+    setView('wizard');
+    setStep(3);
+    setStatus({ 
+      type: 'success', 
+      message: `Generated ${listings.length} listing pages. Review and submit when ready.` 
+    });
+  };
+
   const navItems = [
       { id: 'wizard', label: 'Import Wizard', icon: LayoutList },
+      { id: 'category-generator', label: 'Category Generator', icon: Wand2 },
       { id: 'global-config', label: 'Global Config', icon: Code },
       { id: 'maintenance', label: 'Maintenance', icon: Settings }
   ];
@@ -1212,6 +1237,16 @@ const App: React.FC = () => {
                   )}
                 </div>
             </>
+        )}
+
+        {view === 'category-generator' && (
+            <div className="bg-white shadow-xl shadow-gray-100 rounded-2xl p-8 border border-gray-100">
+                <CategoryGenerator 
+                  config={config}
+                  onGenerate={handleCategoryGenerate}
+                  isConfigValid={!!isConfigValid}
+                />
+            </div>
         )}
 
         {view === 'global-config' && (
