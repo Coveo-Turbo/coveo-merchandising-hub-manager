@@ -165,42 +165,78 @@ const App: React.FC = () => {
 
         // Add Rule if filter is present
         if (row.FilterField) {
-            const localeParts = [row.Language, row.Country, row.Currency].filter(Boolean);
-            const localeSuffix = localeParts.length > 0 ? ` [${localeParts.join('-')}]` : '';
+            const operator = row.FilterOperator || 'isExactly';
             
-            // Generate unique descriptive name
-            const baseRuleName = `Rule: ${row.FilterField} ${row.FilterOperator || 'is'} ${row.FilterValue}${localeSuffix}`;
+            // Check if a rule with the same filter and locale already exists
+            const isDuplicateRule = listing.pageRules.some(existingRule => {
+                // Check if filters match
+                const filtersMatch = existingRule.filters.length === 1 &&
+                    existingRule.filters[0].fieldName === row.FilterField &&
+                    existingRule.filters[0].operator === operator &&
+                    existingRule.filters[0].value.value === row.FilterValue;
+                
+                if (!filtersMatch) return false;
+                
+                // Check if locales match
+                const hasLocale = !!(row.Language || row.Country || row.Currency);
+                const existingHasLocale = !!(existingRule.locales && existingRule.locales.length > 0);
+                
+                if (!hasLocale && !existingHasLocale) {
+                    // Both have no locale - they match
+                    return true;
+                }
+                
+                if (hasLocale !== existingHasLocale) {
+                    // One has locale, other doesn't - they don't match
+                    return false;
+                }
+                
+                // Both have locales - compare them
+                const existingLocale = existingRule.locales![0];
+                return existingLocale.language === (row.Language || undefined) &&
+                       existingLocale.country === (row.Country || undefined) &&
+                       existingLocale.currency === (row.Currency || undefined);
+            });
             
-            // Ensure uniqueness within this listing page
-            let ruleName = baseRuleName;
-            let counter = 1;
-            while (listing.pageRules.some(r => r.name === ruleName)) {
-                counter++;
-                ruleName = `${baseRuleName} (${counter})`;
+            // Only add the rule if it's not a duplicate
+            if (!isDuplicateRule) {
+                const localeParts = [row.Language, row.Country, row.Currency].filter(Boolean);
+                const localeSuffix = localeParts.length > 0 ? ` [${localeParts.join('-')}]` : '';
+                
+                // Generate unique descriptive name
+                const baseRuleName = `Rule: ${row.FilterField} ${operator} ${row.FilterValue}${localeSuffix}`;
+                
+                // Ensure uniqueness within this listing page
+                let ruleName = baseRuleName;
+                let counter = 1;
+                while (listing.pageRules.some(r => r.name === ruleName)) {
+                    counter++;
+                    ruleName = `${baseRuleName} (${counter})`;
+                }
+
+                const rule: ListingPageApiPageRuleModel = {
+                    name: ruleName,
+                    filters: [{
+                        fieldName: row.FilterField,
+                        operator: operator,
+                        value: {
+                            type: 'string',
+                            value: row.FilterValue
+                        }
+                    }]
+                };
+
+                // Add Locale if present
+                if (row.Language || row.Country || row.Currency) {
+                    rule.locales = [{
+                        language: row.Language || undefined,
+                        country: row.Country || undefined,
+                        currency: row.Currency || undefined
+                    }];
+                }
+
+                listing.pageRules.push(rule);
             }
-
-            const rule: ListingPageApiPageRuleModel = {
-                name: ruleName,
-                filters: [{
-                    fieldName: row.FilterField,
-                    operator: row.FilterOperator || 'isExactly',
-                    value: {
-                        type: 'string',
-                        value: row.FilterValue
-                    }
-                }]
-            };
-
-            // Add Locale if present
-            if (row.Language || row.Country || row.Currency) {
-                rule.locales = [{
-                    language: row.Language || undefined,
-                    country: row.Country || undefined,
-                    currency: row.Currency || undefined
-                }];
-            }
-
-            listing.pageRules.push(rule);
         }
     });
 
