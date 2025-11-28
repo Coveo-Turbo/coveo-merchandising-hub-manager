@@ -15,24 +15,25 @@ import {
     updateGlobalProductSuggestConfig,
     createGlobalProductSuggestConfig,
     getGlobalRecommendationsConfig,
-    updateGlobalRecommendationsConfig
+    updateGlobalRecommendationsConfig,
+    listFieldValues
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, Tag
 } from 'lucide-react';
 import Papa from 'papaparse';
 
-type AppView = 'wizard' | 'global-config' | 'maintenance';
+type AppView = 'wizard' | 'global-config' | 'maintenance' | 'generator';
 type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
 
 interface SharedSettings {
     perPage?: number;
     additionalFields?: string[];
-    sorts?: unknown[];
+    sorts?: any[];
 }
 
 const App: React.FC = () => {
@@ -67,6 +68,13 @@ const App: React.FC = () => {
   const [pendingSortLang, setPendingSortLang] = useState('en');
   const [pendingSortLabelValue, setPendingSortLabelValue] = useState('');
 
+  // Generator State
+  const [genField, setGenField] = useState('@ec_category');
+  const [genCatalogId, setGenCatalogId] = useState('');
+  const [genLimit, setGenLimit] = useState(50);
+  const [genUrlPattern, setGenUrlPattern] = useState('https://example.com/c/{{value}}');
+  const [fetchedValues, setFetchedValues] = useState<{value: string, numberOfResults: number}[]>([]);
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
 
   // Developer Mode Trigger (URL or Easter Egg)
   useEffect(() => {
@@ -350,6 +358,72 @@ const App: React.FC = () => {
       }
       setLoading(false);
       setIsDeleteConfirming(false);
+  };
+
+  // --- Category Generator Handlers ---
+  
+  const handleFetchCategories = async () => {
+    setLoading(true);
+    setStatus(null);
+    try {
+        const response = await listFieldValues(config, genField, genCatalogId || undefined, genLimit);
+        setFetchedValues(response.values || []);
+        setStatus({ type: 'success', message: `Fetched ${response.values?.length || 0} values.` });
+    } catch (error: any) {
+        setStatus({ type: 'error', message: `Failed to fetch values: ${error.message}` });
+    }
+    setLoading(false);
+  };
+
+  const toggleValueSelection = (value: string) => {
+      const newSet = new Set(selectedValues);
+      if (newSet.has(value)) {
+          newSet.delete(value);
+      } else {
+          newSet.add(value);
+      }
+      setSelectedValues(newSet);
+  };
+
+  const handleGenerateListings = () => {
+    const newListings: PublicListingPageRequestModel[] = [];
+    const cleanField = genField.startsWith('@') ? genField.substring(1) : genField;
+
+    selectedValues.forEach(value => {
+        const url = genUrlPattern.replace('{{value}}', value)
+            .replace('{{value_slug}}', value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+        
+        // Avoid duplicate rules in parsing logic
+        const ruleName = `Auto: ${cleanField} is ${value}`;
+
+        const listing: PublicListingPageRequestModel = {
+            name: value,
+            trackingId: config.trackingId,
+            patterns: [{ url }],
+            pageRules: [{
+                name: ruleName,
+                filters: [{
+                    fieldName: cleanField,
+                    operator: 'isExactly',
+                    value: { type: 'string', value: value }
+                }]
+            }]
+        };
+        newListings.push(listing);
+    });
+
+    // Merge with any existing parsed listings if user went back and forth
+    const merged = [...parsedListings, ...newListings];
+    setParsedListings(merged);
+    
+    // Reset generator state
+    setFetchedValues([]);
+    setSelectedValues(new Set());
+    
+    // Switch to Preview
+    setView('wizard');
+    setStep(3);
+    setStatus({ type: 'success', message: `Generated ${newListings.length} new listing configurations. Please review.` });
   };
 
   // --- Global Config Handlers ---
@@ -743,6 +817,125 @@ const App: React.FC = () => {
     );
   };
 
+  const renderCategoryGenerator = () => (
+    <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-lg font-bold text-coveo-dark mb-4 flex items-center">
+                <Tag className="w-5 h-5 mr-2 text-coveo-blue" />
+                Fetch Categories
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Field</label>
+                    <input 
+                        type="text" 
+                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue"
+                        value={genField}
+                        onChange={(e) => setGenField(e.target.value)}
+                        placeholder="@ec_category"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Include the '@' prefix.</p>
+                </div>
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Catalog ID (Optional)</label>
+                    <input 
+                        type="text" 
+                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue"
+                        value={genCatalogId}
+                        onChange={(e) => setGenCatalogId(e.target.value)}
+                        placeholder="e.g. my-catalog"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Max Values</label>
+                    <input 
+                        type="number" 
+                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue"
+                        value={genLimit}
+                        onChange={(e) => setGenLimit(parseInt(e.target.value))}
+                    />
+                </div>
+                 <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">URL Pattern</label>
+                    <input 
+                        type="text" 
+                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue"
+                        value={genUrlPattern}
+                        onChange={(e) => setGenUrlPattern(e.target.value)}
+                        placeholder="https://site.com/c/{{value}}"
+                    />
+                     <p className="text-xs text-gray-500 mt-1">Use <span className="font-mono bg-gray-100 px-1 rounded">{'{{value}}'}</span> or <span className="font-mono bg-gray-100 px-1 rounded">{'{{value_slug}}'}</span> as placeholders.</p>
+                </div>
+            </div>
+            <button 
+                onClick={handleFetchCategories}
+                disabled={loading}
+                className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-coveo-blue hover:bg-blue-800 focus:outline-none transition-colors"
+            >
+                {loading ? <RefreshCw className="animate-spin w-4 h-4 mr-2" /> : 'Fetch Values'}
+            </button>
+        </div>
+
+        {fetchedValues.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                    <h4 className="font-bold text-gray-700">Select Values to Generate</h4>
+                    <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">{selectedValues.size} selected</span>
+                        <button 
+                            onClick={handleGenerateListings}
+                            disabled={selectedValues.size === 0}
+                            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md text-sm font-bold hover:bg-green-700 disabled:opacity-50 transition-colors"
+                        >
+                            Generate & Review <ArrowRight className="w-4 h-4 ml-1.5" />
+                        </button>
+                    </div>
+                </div>
+                <div className="max-h-[400px] overflow-y-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase w-10">
+                                    <input 
+                                        type="checkbox" 
+                                        className="rounded border-gray-300 text-coveo-blue focus:ring-coveo-blue"
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setSelectedValues(new Set(fetchedValues.map(v => v.value)));
+                                            } else {
+                                                setSelectedValues(new Set());
+                                            }
+                                        }}
+                                        checked={fetchedValues.length > 0 && selectedValues.size === fetchedValues.length}
+                                    />
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Value</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Occurrences</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {fetchedValues.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-blue-50 transition-colors">
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            className="rounded border-gray-300 text-coveo-blue focus:ring-coveo-blue"
+                                            checked={selectedValues.has(item.value)}
+                                            onChange={() => toggleValueSelection(item.value)}
+                                        />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.value}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.numberOfResults}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+    </div>
+  );
+
   const renderConfigForm = () => (
     <div className="max-w-lg mx-auto space-y-6 py-4">
       <div className="grid grid-cols-1 gap-6">
@@ -1076,6 +1269,7 @@ const App: React.FC = () => {
 
   const navItems = [
       { id: 'wizard', label: 'Import Wizard', icon: LayoutList },
+      { id: 'generator', label: 'Category Generator', icon: Tag },
       { id: 'global-config', label: 'Global Config', icon: Code },
       { id: 'maintenance', label: 'Maintenance', icon: Settings }
   ];
@@ -1089,14 +1283,14 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4">
                {/* Coveo Logo SVG */}
                <div className="w-8 h-8 transition-transform hover:scale-105">
-                 <svg viewBox='0 0 104 104' fill='none' xmlns='http://www.w3.org/2000/svg'><g clip-path='url(#clip0_3523_79576)'><path d='M88.9098 15.003C79.9589 6.10373 68.4937 1.10413 56.7268 0.00422152C55.3188 -0.0957704 54.5142 1.60409 55.5199 2.60401L74.3269 21.3025C74.4275 21.4025 74.3269 21.6025 74.1257 21.5025C68.6949 17.6028 62.56 15.403 56.2239 14.803C55.2182 14.703 54.7153 15.9029 55.4193 16.6029L68.2926 29.4018C68.3931 29.5018 68.2926 29.7018 68.0914 29.6018C64.5714 27.202 60.5485 25.8021 56.4251 25.4022C55.7211 25.3022 55.3188 26.2021 55.8216 26.6021L77.6458 48.3003C78.1486 48.8003 78.9532 48.4003 78.8526 47.7004C78.4504 43.6007 77.0423 39.601 74.6286 36.1013C74.528 36.0013 74.7292 35.8013 74.8298 35.9013L87.2001 48.2003C87.9041 48.9003 89.111 48.3003 89.0104 47.4004C88.5076 41.2009 86.295 35.0014 82.3727 29.7018C82.2721 29.6018 82.4732 29.4018 82.5738 29.5018L101.381 48.2003C102.387 49.2002 104.096 48.4003 103.996 46.9004C102.889 35.3014 97.8608 23.9023 88.9098 15.003Z' fill='#00ADFF'/><path d='M15.0901 15.003C24.041 6.10373 35.5062 1.10413 47.2731 0.00422152C48.6811 -0.0957704 49.4857 1.60409 48.48 2.60401L29.673 21.3025C29.5724 21.4025 29.673 21.6025 29.8741 21.5025C35.305 17.6028 41.4399 15.403 47.776 14.803C48.7817 14.703 49.2845 15.9029 48.5805 16.6029L35.7073 29.4018C35.6068 29.5018 35.7073 29.7018 35.9085 29.6018C39.4285 27.202 43.4514 25.8021 47.5748 25.4022C48.2788 25.3022 48.6811 26.2021 48.1783 26.6021L26.3541 48.4003C25.8513 48.9003 25.0467 48.5003 25.1473 47.8003C25.5495 43.7007 26.9576 39.701 29.3713 36.2013C29.4719 36.1013 29.2707 35.9013 29.1701 36.0013L16.7998 48.3003C16.0958 49.0002 14.8889 48.4003 14.9895 47.5004C15.5929 41.2009 17.8055 35.0014 21.7278 29.7018C21.8284 29.6018 21.6272 29.4018 21.5267 29.5018L2.61912 48.2003C1.6134 49.2002 -0.096326 48.4003 0.00424601 46.9004C1.11054 35.3014 6.13914 23.9023 15.0901 15.003Z' fill='#F05245'/><path d='M15.0901 88.997C24.041 97.8963 35.5062 102.896 47.2731 103.996C48.6811 104.096 49.4857 102.396 48.48 101.396L29.673 82.6975C29.5724 82.5975 29.673 82.3975 29.8741 82.4975C35.305 86.3972 41.4399 88.597 47.776 89.197C48.7817 89.297 49.2845 88.0971 48.5805 87.3971L35.7073 74.5982C35.6068 74.4982 35.7073 74.2982 35.9085 74.3982C39.4285 76.798 43.4514 78.1979 47.5748 78.5978C48.2788 78.6978 48.6811 77.7979 48.1783 77.3979L26.3541 55.5997C25.8513 55.0997 25.0467 55.4997 25.1473 56.1997C25.5495 60.2993 26.9576 64.299 29.3713 67.7987C29.4719 67.8987 29.2707 68.0987 29.1701 67.9987L16.7998 55.6997C16.0958 54.9998 14.8889 55.5997 14.9895 56.4996C15.5929 62.7991 17.8055 68.9986 21.7278 74.2982C21.8284 74.3982 21.6272 74.5982 21.5267 74.4982L2.61912 55.7997C1.6134 54.7998 -0.096326 55.5997 0.00424601 57.0996C1.11054 68.6986 6.13914 80.0977 15.0901 88.997Z' fill='#1CEBCF'/><path d='M88.9098 88.997C79.9589 97.8963 68.4937 102.896 56.7268 103.996C55.3188 104.096 54.5142 102.396 55.5199 101.396L74.3269 82.6975C74.4275 82.5975 74.3269 82.3975 74.1257 82.4975C68.6949 86.3972 62.56 88.597 56.2239 89.197C55.2182 89.2969 54.7153 88.097 55.4193 87.3971L68.2926 74.5981C68.3931 74.4981 68.2926 74.2982 68.0914 74.3982C64.5714 76.798 60.5485 78.1978 56.4251 78.5978C55.7211 78.6978 55.3188 77.7979 55.8216 77.3979L77.6458 55.6997C78.1486 55.1997 78.9532 55.5997 78.8526 56.2996C78.4504 60.3993 77.0423 64.399 74.6286 67.8987C74.528 67.9987 74.7292 68.1987 74.8298 68.0987L87.2001 55.7997C87.9041 55.0997 89.111 55.6997 89.0104 56.5996C88.5076 62.7991 86.295 68.9986 82.3727 74.3982C82.2721 74.4981 82.4732 74.6981 82.5738 74.5981L101.381 55.8997C102.387 54.8997 104.096 55.6997 103.996 57.1996C102.889 68.6986 97.8608 80.0977 88.9098 88.997Z' fill='#FFE300'/></g><defs><clipPath id='clip0_3523_79576'><rect width='104' height='104' fill='white'/></clipPath></defs></svg>
+                 <svg viewBox='0 0 104 104' fill='none' xmlns='http://www.w3.org/2000/svg'><g clip-path='url(#clip0_3523_79576)'><path d='M88.9098 15.003C79.9589 6.10373 68.4937 1.10413 56.7268 0.00422152C55.3188 -0.0957704 54.5142 1.60409 55.5199 2.60401L74.3269 21.3025C74.4275 21.4025 74.3269 21.6025 74.1257 21.5025C68.6949 17.6028 62.56 15.403 56.2239 14.803C55.2182 14.703 54.7153 15.9029 55.4193 16.6029L68.2926 29.4018C68.3931 29.5018 68.2926 29.7018 68.0914 29.6018C64.5714 27.202 60.5485 25.8021 56.4251 25.4022C55.7211 25.3022 55.3188 26.2021 55.8216 26.6021L77.6458 48.3003C78.1486 48.8003 78.9532 48.4003 78.8526 47.7004C78.4504 43.6007 77.0423 39.601 74.6286 36.1013C74.528 36.0013 74.7292 35.8013 74.8298 35.9013L87.2001 48.2003C87.9041 48.9003 89.111 48.3003 89.0104 47.4004C88.5076 41.2009 86.295 35.0014 82.3727 29.7018C82.2721 29.6018 82.4732 29.4018 82.5738 29.5018L101.381 48.2003C102.387 49.2002 104.096 48.4003 103.996 46.9004C102.889 35.3014 97.8608 23.9023 88.9098 15.003Z' fill='#00ADFF'/><path d='M15.0901 15.003C24.041 97.8963 35.5062 1.10413 47.2731 0.00422152C48.6811 -0.0957704 49.4857 1.60409 48.48 2.60401L29.673 21.3025C29.5724 21.4025 29.673 21.6025 29.8741 21.5025C35.305 17.6028 41.4399 15.403 47.776 14.803C48.7817 14.703 49.2845 15.9029 48.5805 16.6029L35.7073 29.4018C35.6068 29.5018 35.7073 29.7018 35.9085 29.6018C39.4285 27.202 43.4514 25.8021 47.5748 25.4022C48.2788 25.3022 48.6811 26.2021 48.1783 26.6021L26.3541 48.4003C25.8513 48.9003 25.0467 48.5003 25.1473 47.8003C25.5495 43.7007 26.9576 39.701 29.3713 36.2013C29.4719 36.1013 29.2707 35.9013 29.1701 36.0013L16.7998 48.3003C16.0958 49.0002 14.8889 48.4003 14.9895 47.5004C15.5929 41.2009 17.8055 35.0014 21.7278 29.7018C21.8284 29.6018 21.6272 29.4018 21.5267 29.5018L2.61912 48.2003C1.6134 49.2002 -0.096326 48.4003 0.00424601 46.9004C1.11054 35.3014 6.13914 23.9023 15.0901 15.003Z' fill='#F05245'/><path d='M15.0901 88.997C24.041 97.8963 35.5062 102.896 47.2731 103.996C48.6811 104.096 49.4857 102.396 48.48 101.396L29.673 82.6975C29.5724 82.5975 29.673 82.3975 29.8741 82.4975C35.305 86.3972 41.4399 88.597 47.776 89.197C48.7817 89.297 49.2845 88.0971 48.5805 87.3971L35.7073 74.5982C35.6068 74.4982 35.7073 74.2982 35.9085 74.3982C39.4285 76.798 43.4514 78.1979 47.5748 78.5978C48.2788 78.6978 48.6811 77.7979 48.1783 77.3979L26.3541 55.5997C25.8513 55.0997 25.0467 55.4997 25.1473 56.1997C25.5495 60.2993 26.9576 64.299 29.3713 67.7987C29.4719 67.8987 29.2707 68.0987 29.1701 67.9987L16.7998 55.6997C16.0958 54.9998 14.8889 55.5997 14.9895 56.4996C15.5929 62.7991 17.8055 68.9986 21.7278 74.2982C21.8284 74.3982 21.6272 74.5982 21.5267 74.4982L2.61912 55.7997C1.6134 54.7998 -0.096326 55.5997 0.00424601 57.0996C1.11054 68.6986 6.13914 80.0977 15.0901 88.997Z' fill='#1CEBCF'/><path d='M88.9098 88.997C79.9589 97.8963 68.4937 102.896 56.7268 103.996C55.3188 104.096 54.5142 102.396 55.5199 101.396L74.3269 82.6975C74.4275 82.5975 74.3269 82.3975 74.1257 82.4975C68.6949 86.3972 62.56 88.597 56.2239 89.197C55.2182 89.2969 54.7153 88.097 55.4193 87.3971L68.2926 74.5981C68.3931 74.4981 68.2926 74.2982 68.0914 74.3982C64.5714 76.798 60.5485 78.1978 56.4251 78.5978C55.7211 78.6978 55.3188 77.7979 55.8216 77.3979L77.6458 55.6997C78.1486 55.1997 78.9532 55.5997 78.8526 56.2996C78.4504 60.3993 77.0423 64.399 74.6286 67.8987C74.528 67.9987 74.7292 68.1987 74.8298 68.0987L87.2001 55.7997C87.9041 55.0997 89.111 55.6997 89.0104 56.5996C88.5076 62.7991 86.295 68.9986 82.3727 74.3982C82.2721 74.4981 82.4732 74.6981 82.5738 74.5981L101.381 55.8997C102.387 54.8997 104.096 55.6997 103.996 57.1996C102.889 68.6986 97.8608 80.0977 88.9098 88.997Z' fill='#FFE300'/></g><defs><clipPath id='clip0_3523_79576'><rect width='104' height='104' fill='white'/></clipPath></defs></svg>
                </div>
               <div className="flex flex-col justify-center">
                   <h1 className="text-lg font-bold bg-gradient-to-r from-coveo-blue to-blue-600 bg-clip-text text-transparent">
                     Coveo Merchandising Hub Manager
                   </h1>
                   <div className="flex items-center space-x-2">
-                      <span onClick={handleVersionClick} className="text-[10px] font-semibold text-gray-400 cursor-default hover:text-coveo-blue tracking-wider">V1.1</span>
+                      <span onClick={handleVersionClick} className="text-[10px] font-semibold text-gray-400 cursor-default hover:text-coveo-blue tracking-wider">V1.2</span>
                       {devMode && <span className="text-[10px] bg-coveo-orange text-white px-1.5 py-0.5 rounded-full font-bold tracking-wide shadow-sm">DEV MODE</span>}
                   </div>
               </div>
@@ -1212,6 +1406,21 @@ const App: React.FC = () => {
                   )}
                 </div>
             </>
+        )}
+
+        {view === 'generator' && (
+             <div className="bg-white shadow-xl shadow-gray-100 rounded-2xl p-8 border border-gray-100">
+                <div className="flex items-center mb-8">
+                    <div className="p-2 bg-blue-50 rounded-lg mr-4">
+                        <Tag className="w-6 h-6 text-coveo-blue" />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-coveo-dark">Category Listing Generator</h2>
+                        <p className="text-sm text-gray-500">Auto-generate listing pages from existing index values.</p>
+                    </div>
+                </div>
+                {renderCategoryGenerator()}
+            </div>
         )}
 
         {view === 'global-config' && (
