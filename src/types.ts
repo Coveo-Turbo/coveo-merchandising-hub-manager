@@ -58,12 +58,12 @@ export interface CommercePageModelPublicListingPageResponseModel {
 export interface CsvRow {
   Name: string;
   UrlPattern: string;
-  FilterField?: string;
-  FilterValue?: string;
-  FilterOperator?: string;
-  Language?: string;
-  Country?: string;
-  Currency?: string;
+  FilterField: string;
+  FilterValue: string;
+  FilterOperator: string;
+  Language: string;
+  Country: string;
+  Currency: string;
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';

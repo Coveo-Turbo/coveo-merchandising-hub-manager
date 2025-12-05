@@ -10,7 +10,7 @@ export function convertListingsToCsv(listings: PublicListingPageResponseModel[])
 
   for (const listing of listings) {
     // Combine all URL patterns into a single semicolon-separated string
-    const urlPattern = listing.patterns.map(p => p.url).join(';');
+    const urlPattern = listing.patterns?.map(p => p.url).join(';') || '';
 
     if (listing.pageRules && listing.pageRules.length > 0) {
       // Generate a row for each rule
@@ -22,7 +22,7 @@ export function convertListingsToCsv(listings: PublicListingPageResponseModel[])
               Name: listing.name,
               UrlPattern: urlPattern,
               FilterField: filter.fieldName,
-              FilterValue: filter.value.value?.toString() || '',
+              FilterValue: filter.value?.value?.toString() || '',
               FilterOperator: filter.operator,
               Language: rule.locales?.[0]?.language || '',
               Country: rule.locales?.[0]?.country || '',
