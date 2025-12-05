@@ -1,5 +1,5 @@
 
-import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
+import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel, DetailedListingPageResponseModel } from '../types';
 
 const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
 
@@ -139,6 +139,26 @@ export const fetchAllListings = async (config: ConfigState): Promise<PublicListi
       }
   }
   return allItems;
+};
+
+export const fetchListingById = async (config: ConfigState, listingId: string): Promise<DetailedListingPageResponseModel> => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/${listingId}?trackingId=${config.trackingId}`;
+  
+  const response = await fetch(url, {
+      cache: 'no-store',
+      headers: { 
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Accept': 'application/json'
+      }
+  });
+  
+  if (!response.ok) {
+     const errorText = await response.text();
+     throw new Error(`Failed to fetch listing ${listingId}: ${errorText}`);
+  }
+
+  return await response.json();
 };
 
 export const bulkDeleteListings = async (config: ConfigState, ids: string[]) => {
