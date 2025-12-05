@@ -72,7 +72,7 @@ export interface PublicListingPageResponseModel {
   name: string;
   trackingId?: string;
   patterns: MatchingConfigurationModel[];
-  pageRules: ListingPageApiPageRuleModel[];
+  pageRules?: ListingPageApiPageRuleModel[];
 }
 
 export interface CommercePageModelPublicListingPageResponseModel {

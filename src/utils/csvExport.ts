@@ -133,14 +133,17 @@ export async function convertListingsToCsv(
       .filter(url => url !== null && url !== undefined)
       .join(';') || '';
 
-    for (const rule of listing.pageRules) {
-      const ruleRows = createRowsFromFilters(
-        listing.name,
-        urlPattern,
-        rule.filters,
-        rule.locales
-      );
-      rows.push(...ruleRows);
+    // TypeScript safety: pageRules is guaranteed to exist and have length > 0 for modernListings
+    if (listing.pageRules) {
+      for (const rule of listing.pageRules) {
+        const ruleRows = createRowsFromFilters(
+          listing.name,
+          urlPattern,
+          rule.filters,
+          rule.locales
+        );
+        rows.push(...ruleRows);
+      }
     }
   }
 
