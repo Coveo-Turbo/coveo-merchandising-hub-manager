@@ -374,7 +374,7 @@ const App: React.FC = () => {
           });
 
           // Generate filename with current date in ISO format (YYYY-MM-DD)
-          const dateStr = new Date().toLocaleDateString('sv-SE'); // Swedish locale gives ISO format
+          const dateStr = new Date().toISOString().split('T')[0];
           const filename = `listings-export-${dateStr}.csv`;
 
           // Create download link

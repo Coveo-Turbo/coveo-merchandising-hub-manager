@@ -7,9 +7,12 @@ import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel } from '.
 function getFilterValueAsString(filter: QueryFilterModel): string {
   if (!filter.value) return '';
   
-  // Handle array values (join with comma)
+  // Handle array values (join with comma, filtering out null/undefined)
   if (filter.value.values && Array.isArray(filter.value.values)) {
-    return filter.value.values.join(',');
+    return filter.value.values
+      .filter(v => v !== null && v !== undefined)
+      .map(v => String(v))
+      .join(',');
   }
   
   // Handle single value (string or number)
@@ -30,7 +33,10 @@ export function convertListingsToCsv(listings: PublicListingPageResponseModel[])
 
   for (const listing of listings) {
     // Combine all URL patterns into a single semicolon-separated string
-    const urlPattern = listing.patterns?.map(p => p.url).join(';') || '';
+    const urlPattern = listing.patterns
+      ?.map(p => p.url)
+      .filter(url => url !== null && url !== undefined)
+      .join(';') || '';
 
     if (listing.pageRules && listing.pageRules.length > 0) {
       // Generate a row for each rule
