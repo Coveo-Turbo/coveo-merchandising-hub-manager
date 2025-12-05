@@ -19,10 +19,11 @@ import {
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
+import { convertListingsToCsv } from './utils/csvExport';
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, Download
 } from 'lucide-react';
 import Papa from 'papaparse';
 
@@ -350,6 +351,45 @@ const App: React.FC = () => {
       }
       setLoading(false);
       setIsDeleteConfirming(false);
+  };
+
+  const handleExportAllListings = async () => {
+      setLoading(true);
+      setStatus({ type: 'info', message: 'Fetching all listings...' });
+      try {
+          const allListings = await fetchAllListings(config);
+          
+          if (allListings.length === 0) {
+              setStatus({ type: 'info', message: 'No listings found to export.' });
+              setLoading(false);
+              return;
+          }
+
+          // Convert listings to CSV rows
+          const csvRows = convertListingsToCsv(allListings);
+          
+          // Generate CSV string using PapaParse
+          const csv = Papa.unparse(csvRows, {
+              columns: ['Name', 'UrlPattern', 'FilterField', 'FilterValue', 'FilterOperator', 'Language', 'Country', 'Currency']
+          });
+
+          // Create download link
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', `listings-export-${new Date().toISOString().split('T')[0]}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          setStatus({ type: 'success', message: `Successfully exported ${allListings.length} listings (${csvRows.length} rows).` });
+      } catch (error: any) {
+          console.error("Export error", error);
+          setStatus({ type: 'error', message: `Export failed: ${error.message}` });
+      }
+      setLoading(false);
   };
 
   // --- Global Config Handlers ---
@@ -1023,6 +1063,45 @@ const App: React.FC = () => {
 
   const renderMaintenance = () => (
       <div className="max-w-3xl mx-auto space-y-8 py-12">
+          <div className="bg-white border border-blue-100 rounded-xl p-8 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-start">
+                  <div className="flex-shrink-0 bg-blue-100 p-3 rounded-full">
+                      <Download className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-6 flex-1">
+                      <h3 className="text-xl font-bold text-gray-900">Export All Listings to CSV</h3>
+                      <div className="mt-3 text-sm text-gray-600 leading-relaxed">
+                          <p>
+                              Download all listing pages associated with the tracking ID 
+                              <span className="font-mono bg-gray-100 px-2 py-0.5 mx-1 rounded text-blue-600 font-bold border border-gray-200">{config.trackingId}</span>
+                              as a CSV file.
+                          </p>
+                          <p className="mt-2">
+                              The exported file can be edited in Excel or Google Sheets and re-imported using the Import Wizard.
+                          </p>
+                      </div>
+                      <div className="mt-8">
+                          <button
+                              onClick={handleExportAllListings}
+                              disabled={!isConfigValid || loading}
+                              className="inline-flex items-center px-6 py-3 border border-blue-200 text-sm font-bold rounded-lg shadow-sm text-white bg-coveo-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                              {loading ? (
+                                  <>
+                                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                                      Exporting...
+                                  </>
+                              ) : (
+                                  <>
+                                      <Download className="w-5 h-5 mr-2" />
+                                      Export All Listings to CSV
+                                  </>
+                              )}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
           <div className="bg-white border border-red-100 rounded-xl p-8 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start">
                   <div className="flex-shrink-0 bg-red-100 p-3 rounded-full">

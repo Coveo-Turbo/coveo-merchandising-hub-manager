@@ -44,6 +44,9 @@ export interface PublicListingPageRequestModel {
 export interface PublicListingPageResponseModel {
   id: string;
   name: string;
+  trackingId?: string;
+  patterns: MatchingConfigurationModel[];
+  pageRules: ListingPageApiPageRuleModel[];
 }
 
 export interface CommercePageModelPublicListingPageResponseModel {
