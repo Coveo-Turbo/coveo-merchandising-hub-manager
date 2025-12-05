@@ -1,4 +1,4 @@
-import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel, ConfigState, DetailedListingPageResponseModel, RuleLocaleModel } from '../types';
+import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel, ConfigState, RuleLocaleModel } from '../types';
 import { fetchListingById } from '../services/coveoApi';
 
 /**
@@ -114,56 +114,82 @@ export async function convertListingsToCsv(
 ): Promise<CsvRow[]> {
   const rows: CsvRow[] = [];
 
+  // Separate listings into those with pageRules (modern) and those without (legacy)
+  const modernListings: PublicListingPageResponseModel[] = [];
+  const legacyListings: PublicListingPageResponseModel[] = [];
+  
   for (const listing of listings) {
-    // Combine all URL patterns into a single semicolon-separated string
+    if (listing.pageRules && listing.pageRules.length > 0) {
+      modernListings.push(listing);
+    } else {
+      legacyListings.push(listing);
+    }
+  }
+
+  // Process modern listings synchronously
+  for (const listing of modernListings) {
     const urlPattern = listing.patterns
       ?.map(p => p.url)
       .filter(url => url !== null && url !== undefined)
       .join(';') || '';
 
-    if (listing.pageRules && listing.pageRules.length > 0) {
-      // Modern format: has pageRules
-      for (const rule of listing.pageRules) {
-        const ruleRows = createRowsFromFilters(
-          listing.name,
-          urlPattern,
-          rule.filters,
-          rule.locales
-        );
-        rows.push(...ruleRows);
-      }
-    } else {
-      // Legacy format or no rules: fetch detailed listing to check for filterRules
-      try {
-        const detailedListing: DetailedListingPageResponseModel = await fetchListingById(config, listing.id);
-        
-        if (detailedListing.rules?.filterRules && detailedListing.rules.filterRules.length > 0) {
-          // Legacy format: has filterRules
-          for (const filterRule of detailedListing.rules.filterRules) {
-            const ruleRows = createRowsFromFilters(
-              listing.name,
-              urlPattern,
-              filterRule.filters,
-              filterRule.locales
-            );
-            rows.push(...ruleRows);
-          }
-        } else {
-          // No rules at all - just name and URL pattern
-          rows.push({
-            Name: listing.name,
-            UrlPattern: urlPattern,
-            FilterField: '',
-            FilterValue: '',
-            FilterOperator: '',
-            Language: '',
-            Country: '',
-            Currency: ''
-          });
-        }
-      } catch (error) {
-        console.error(`Failed to fetch details for listing ${listing.id}:`, error);
+    for (const rule of listing.pageRules) {
+      const ruleRows = createRowsFromFilters(
+        listing.name,
+        urlPattern,
+        rule.filters,
+        rule.locales
+      );
+      rows.push(...ruleRows);
+    }
+  }
+
+  // Fetch all legacy listings in parallel for better performance
+  if (legacyListings.length > 0) {
+    const detailedListingsPromises = legacyListings.map(listing =>
+      fetchListingById(config, listing.id)
+        .then(detailed => ({ listing, detailed, error: null }))
+        .catch(error => ({ listing, detailed: null, error }))
+    );
+
+    const detailedListingsResults = await Promise.all(detailedListingsPromises);
+
+    for (const result of detailedListingsResults) {
+      const { listing, detailed, error } = result;
+      const urlPattern = listing.patterns
+        ?.map(p => p.url)
+        .filter(url => url !== null && url !== undefined)
+        .join(';') || '';
+
+      if (error) {
+        console.error(`Failed to fetch details for listing "${listing.name}" (${listing.id}):`, error);
         // Fallback: create basic row without filters
+        rows.push({
+          Name: listing.name,
+          UrlPattern: urlPattern,
+          FilterField: '',
+          FilterValue: '',
+          FilterOperator: '',
+          Language: '',
+          Country: '',
+          Currency: ''
+        });
+        continue;
+      }
+
+      if (detailed?.rules?.filterRules && detailed.rules.filterRules.length > 0) {
+        // Legacy format: has filterRules
+        for (const filterRule of detailed.rules.filterRules) {
+          const ruleRows = createRowsFromFilters(
+            listing.name,
+            urlPattern,
+            filterRule.filters,
+            filterRule.locales
+          );
+          rows.push(...ruleRows);
+        }
+      } else {
+        // No rules at all - just name and URL pattern
         rows.push({
           Name: listing.name,
           UrlPattern: urlPattern,
