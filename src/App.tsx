@@ -365,8 +365,9 @@ const App: React.FC = () => {
               return;
           }
 
-          // Convert listings to CSV rows
-          const csvRows = convertListingsToCsv(allListings);
+          // Convert listings to CSV rows (with fallback for legacy format)
+          setStatus({ type: 'info', message: 'Converting listings to CSV format...' });
+          const csvRows = await convertListingsToCsv(allListings, config);
           
           // Generate CSV string using PapaParse
           const csv = Papa.unparse(csvRows, {

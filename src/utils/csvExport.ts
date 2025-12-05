@@ -1,4 +1,5 @@
-import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel } from '../types';
+import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel, ConfigState, DetailedListingPageResponseModel, RuleLocaleModel } from '../types';
+import { fetchListingById } from '../services/coveoApi';
 
 /**
  * Helper function to safely extract filter value as a string
@@ -24,11 +25,93 @@ function getFilterValueAsString(filter: QueryFilterModel): string {
 }
 
 /**
+ * Helper function to create CSV rows from filters and locales
+ * If multiple locales exist, creates one row per locale
+ */
+function createRowsFromFilters(
+  name: string,
+  urlPattern: string,
+  filters: QueryFilterModel[],
+  locales: RuleLocaleModel[] | undefined
+): CsvRow[] {
+  const rows: CsvRow[] = [];
+  
+  if (!filters || filters.length === 0) {
+    // No filters, create row(s) for locale(s) only
+    if (locales && locales.length > 0) {
+      for (const locale of locales) {
+        rows.push({
+          Name: name,
+          UrlPattern: urlPattern,
+          FilterField: '',
+          FilterValue: '',
+          FilterOperator: '',
+          Language: locale.language || '',
+          Country: locale.country || '',
+          Currency: locale.currency || ''
+        });
+      }
+    } else {
+      // No filters and no locales
+      rows.push({
+        Name: name,
+        UrlPattern: urlPattern,
+        FilterField: '',
+        FilterValue: '',
+        FilterOperator: '',
+        Language: '',
+        Country: '',
+        Currency: ''
+      });
+    }
+  } else {
+    // Has filters
+    if (locales && locales.length > 0) {
+      // Create row for each filter × each locale
+      for (const filter of filters) {
+        for (const locale of locales) {
+          rows.push({
+            Name: name,
+            UrlPattern: urlPattern,
+            FilterField: filter.fieldName,
+            FilterValue: getFilterValueAsString(filter),
+            FilterOperator: filter.operator,
+            Language: locale.language || '',
+            Country: locale.country || '',
+            Currency: locale.currency || ''
+          });
+        }
+      }
+    } else {
+      // Filters but no locales
+      for (const filter of filters) {
+        rows.push({
+          Name: name,
+          UrlPattern: urlPattern,
+          FilterField: filter.fieldName,
+          FilterValue: getFilterValueAsString(filter),
+          FilterOperator: filter.operator,
+          Language: '',
+          Country: '',
+          Currency: ''
+        });
+      }
+    }
+  }
+  
+  return rows;
+}
+
+/**
  * Converts listing page data from API format to flat CSV rows
  * Each row represents a single filter rule with its associated listing and locale
  * Multiple rules per listing generate multiple rows with the same Name/UrlPattern
+ * Handles both modern pageRules format and legacy filterRules format
  */
-export function convertListingsToCsv(listings: PublicListingPageResponseModel[]): CsvRow[] {
+export async function convertListingsToCsv(
+  listings: PublicListingPageResponseModel[], 
+  config: ConfigState
+): Promise<CsvRow[]> {
   const rows: CsvRow[] = [];
 
   for (const listing of listings) {
@@ -39,51 +122,59 @@ export function convertListingsToCsv(listings: PublicListingPageResponseModel[])
       .join(';') || '';
 
     if (listing.pageRules && listing.pageRules.length > 0) {
-      // Generate a row for each rule
+      // Modern format: has pageRules
       for (const rule of listing.pageRules) {
-        if (rule.filters && rule.filters.length > 0) {
-          // For each filter in the rule
-          for (const filter of rule.filters) {
-            const row: CsvRow = {
-              Name: listing.name,
-              UrlPattern: urlPattern,
-              FilterField: filter.fieldName,
-              FilterValue: getFilterValueAsString(filter),
-              FilterOperator: filter.operator,
-              Language: rule.locales?.[0]?.language || '',
-              Country: rule.locales?.[0]?.country || '',
-              Currency: rule.locales?.[0]?.currency || ''
-            };
-            rows.push(row);
+        const ruleRows = createRowsFromFilters(
+          listing.name,
+          urlPattern,
+          rule.filters,
+          rule.locales
+        );
+        rows.push(...ruleRows);
+      }
+    } else {
+      // Legacy format or no rules: fetch detailed listing to check for filterRules
+      try {
+        const detailedListing: DetailedListingPageResponseModel = await fetchListingById(config, listing.id);
+        
+        if (detailedListing.rules?.filterRules && detailedListing.rules.filterRules.length > 0) {
+          // Legacy format: has filterRules
+          for (const filterRule of detailedListing.rules.filterRules) {
+            const ruleRows = createRowsFromFilters(
+              listing.name,
+              urlPattern,
+              filterRule.filters,
+              filterRule.locales
+            );
+            rows.push(...ruleRows);
           }
         } else {
-          // Rule without filters - just listing with locale
-          const row: CsvRow = {
+          // No rules at all - just name and URL pattern
+          rows.push({
             Name: listing.name,
             UrlPattern: urlPattern,
             FilterField: '',
             FilterValue: '',
             FilterOperator: '',
-            Language: rule.locales?.[0]?.language || '',
-            Country: rule.locales?.[0]?.country || '',
-            Currency: rule.locales?.[0]?.currency || ''
-          };
-          rows.push(row);
+            Language: '',
+            Country: '',
+            Currency: ''
+          });
         }
+      } catch (error) {
+        console.error(`Failed to fetch details for listing ${listing.id}:`, error);
+        // Fallback: create basic row without filters
+        rows.push({
+          Name: listing.name,
+          UrlPattern: urlPattern,
+          FilterField: '',
+          FilterValue: '',
+          FilterOperator: '',
+          Language: '',
+          Country: '',
+          Currency: ''
+        });
       }
-    } else {
-      // Listing without rules - just name and URL pattern
-      const row: CsvRow = {
-        Name: listing.name,
-        UrlPattern: urlPattern,
-        FilterField: '',
-        FilterValue: '',
-        FilterOperator: '',
-        Language: '',
-        Country: '',
-        Currency: ''
-      };
-      rows.push(row);
     }
   }
 

@@ -41,6 +41,32 @@ export interface PublicListingPageRequestModel {
   pageRules: ListingPageApiPageRuleModel[];
 }
 
+// Legacy listing page format (filter rules structure)
+export interface LegacyFilterRuleModel {
+  id: string;
+  name: string;
+  filters: QueryFilterModel[];
+  locales?: RuleLocaleModel[];
+  action: 'include' | 'exclude';
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface LegacyListingRulesModel {
+  rankingRules: unknown[];
+  filterRules: LegacyFilterRuleModel[];
+  pinRules: unknown[];
+}
+
+export interface DetailedListingPageResponseModel {
+  id: string;
+  name: string;
+  trackingId?: string;
+  patterns: MatchingConfigurationModel[];
+  pageRules?: ListingPageApiPageRuleModel[];
+  rules?: LegacyListingRulesModel;
+}
+
 export interface PublicListingPageResponseModel {
   id: string;
   name: string;
