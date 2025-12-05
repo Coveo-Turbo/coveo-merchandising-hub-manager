@@ -1,4 +1,24 @@
-import type { PublicListingPageResponseModel, CsvRow } from '../types';
+import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel } from '../types';
+
+/**
+ * Helper function to safely extract filter value as a string
+ * Handles different value types: string, number, or array
+ */
+function getFilterValueAsString(filter: QueryFilterModel): string {
+  if (!filter.value) return '';
+  
+  // Handle array values (join with comma)
+  if (filter.value.values && Array.isArray(filter.value.values)) {
+    return filter.value.values.join(',');
+  }
+  
+  // Handle single value (string or number)
+  if (filter.value.value !== undefined && filter.value.value !== null) {
+    return String(filter.value.value);
+  }
+  
+  return '';
+}
 
 /**
  * Converts listing page data from API format to flat CSV rows
@@ -22,7 +42,7 @@ export function convertListingsToCsv(listings: PublicListingPageResponseModel[])
               Name: listing.name,
               UrlPattern: urlPattern,
               FilterField: filter.fieldName,
-              FilterValue: filter.value?.value?.toString() || '',
+              FilterValue: getFilterValueAsString(filter),
               FilterOperator: filter.operator,
               Language: rule.locales?.[0]?.language || '',
               Country: rule.locales?.[0]?.country || '',

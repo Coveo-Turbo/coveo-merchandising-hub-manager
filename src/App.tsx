@@ -373,12 +373,16 @@ const App: React.FC = () => {
               columns: ['Name', 'UrlPattern', 'FilterField', 'FilterValue', 'FilterOperator', 'Language', 'Country', 'Currency']
           });
 
+          // Generate filename with current date in ISO format (YYYY-MM-DD)
+          const dateStr = new Date().toLocaleDateString('sv-SE'); // Swedish locale gives ISO format
+          const filename = `listings-export-${dateStr}.csv`;
+
           // Create download link
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.setAttribute('download', `listings-export-${new Date().toISOString().split('T')[0]}.csv`);
+          link.setAttribute('download', filename);
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
