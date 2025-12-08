@@ -168,6 +168,9 @@ const App: React.FC = () => {
         if (row.FilterField && row.FilterValue) {
             const operator = row.FilterOperator || 'isExactly';
             
+            // Normalize FilterField to lowercase (API requirement)
+            const filterField = row.FilterField.toLowerCase();
+            
             // Parse FilterValue - support semicolon-separated multiple values
             const filterValues = row.FilterValue.split(';').map(v => v.trim()).filter(v => v);
             const isArrayValue = filterValues.length > 1;
@@ -178,7 +181,7 @@ const App: React.FC = () => {
                 if (existingRule.filters.length !== 1) return false;
                 
                 const existingFilter = existingRule.filters[0];
-                if (existingFilter.fieldName !== row.FilterField || existingFilter.operator !== operator) {
+                if (existingFilter.fieldName !== filterField || existingFilter.operator !== operator) {
                     return false;
                 }
                 
@@ -231,7 +234,7 @@ const App: React.FC = () => {
                     valueDisplay = `${valueDisplay.substring(0, maxValueLength)}... (${valueCount} value${valueCount > 1 ? 's' : ''})`;
                 }
                 
-                const baseRuleName = `Rule: ${row.FilterField} ${operator} ${valueDisplay}${localeSuffix}`;
+                const baseRuleName = `Rule: ${filterField} ${operator} ${valueDisplay}${localeSuffix}`;
                 
                 // Ensure final name is under 255 chars
                 let ruleName = baseRuleName.length > 255 ? baseRuleName.substring(0, 250) + '...' : baseRuleName;
@@ -248,7 +251,7 @@ const App: React.FC = () => {
                 const rule: ListingPageApiPageRuleModel = {
                     name: ruleName,
                     filters: [{
-                        fieldName: row.FilterField,
+                        fieldName: filterField,
                         operator: operator,
                         value: isArrayValue ? {
                             type: 'array',
@@ -995,7 +998,10 @@ const App: React.FC = () => {
                                     {rule.name}
                                 </div>
                                 <div className="mt-1.5 text-gray-600 font-mono bg-gray-50/50 p-1 rounded">
-                                    {rule.filters.map(f => `${f.fieldName} ${f.operator} "${f.value.value}"`).join(', ')}
+                                    {rule.filters.map(f => {
+                                        const displayValue = f.value.values ? f.value.values.join(';') : f.value.value;
+                                        return `${f.fieldName} ${f.operator} "${displayValue}"`;
+                                    }).join(', ')}
                                 </div>
                                 {rule.locales && rule.locales.length > 0 && (
                                     <div className="mt-2 pt-1 border-t border-gray-100 flex items-center text-gray-400 text-[10px] uppercase tracking-wide">
