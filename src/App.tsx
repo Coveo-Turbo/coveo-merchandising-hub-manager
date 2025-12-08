@@ -19,10 +19,11 @@ import {
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
+import { convertListingsToCsv } from './utils/csvExport';
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, Download
 } from 'lucide-react';
 import Papa from 'papaparse';
 
@@ -163,19 +164,41 @@ const App: React.FC = () => {
             });
         }
 
-        // Add Rule if filter is present
-        if (row.FilterField) {
+        // Add Rule if filter is present (skip rows without FilterField or FilterValue)
+        if (row.FilterField && row.FilterValue) {
             const operator = row.FilterOperator || 'isExactly';
+            
+            // Normalize FilterField to lowercase (API requirement)
+            const filterField = row.FilterField.toLowerCase();
+            
+            // Parse FilterValue - support semicolon-separated multiple values
+            const filterValues = row.FilterValue.split(';').map(v => v.trim()).filter(v => v);
+            const isArrayValue = filterValues.length > 1;
             
             // Check if a rule with the same filter and locale already exists
             const isDuplicateRule = listing.pageRules.some(existingRule => {
                 // Check if filters match
-                const filtersMatch = existingRule.filters.length === 1 &&
-                    existingRule.filters[0].fieldName === row.FilterField &&
-                    existingRule.filters[0].operator === operator &&
-                    existingRule.filters[0].value.value === row.FilterValue;
+                if (existingRule.filters.length !== 1) return false;
                 
-                if (!filtersMatch) return false;
+                const existingFilter = existingRule.filters[0];
+                if (existingFilter.fieldName !== filterField || existingFilter.operator !== operator) {
+                    return false;
+                }
+                
+                // Compare filter values
+                let valuesMatch = false;
+                if (isArrayValue) {
+                    // Compare array values efficiently using Set
+                    const existingValues = existingFilter.value.values || [];
+                    const filterValuesSet = new Set(filterValues);
+                    valuesMatch = existingValues.length === filterValues.length &&
+                        existingValues.every(v => filterValuesSet.has(v));
+                } else {
+                    // Compare single value
+                    valuesMatch = existingFilter.value.value === row.FilterValue;
+                }
+                
+                if (!valuesMatch) return false;
                 
                 // Check if locales match
                 const hasLocale = !!(row.Language || row.Country || row.Currency);
@@ -203,25 +226,39 @@ const App: React.FC = () => {
                 const localeParts = [row.Language, row.Country, row.Currency].filter(Boolean);
                 const localeSuffix = localeParts.length > 0 ? ` [${localeParts.join('-')}]` : '';
                 
-                // Generate unique descriptive name
-                const baseRuleName = `Rule: ${row.FilterField} ${operator} ${row.FilterValue}${localeSuffix}`;
+                // Generate unique descriptive name (limit to 200 chars to allow for counter suffix)
+                let valueDisplay = isArrayValue ? filterValues.join(';') : row.FilterValue;
+                const maxValueLength = 150; // Leave room for field name, operator, locale, and counter
+                if (valueDisplay.length > maxValueLength) {
+                    const valueCount = isArrayValue ? filterValues.length : 1;
+                    valueDisplay = `${valueDisplay.substring(0, maxValueLength)}... (${valueCount} value${valueCount > 1 ? 's' : ''})`;
+                }
+                
+                const baseRuleName = `Rule: ${filterField} ${operator} ${valueDisplay}${localeSuffix}`;
+                
+                // Ensure final name is under 255 chars
+                let ruleName = baseRuleName.length > 255 ? baseRuleName.substring(0, 250) + '...' : baseRuleName;
                 
                 // Ensure uniqueness within this listing page
-                let ruleName = baseRuleName;
                 let counter = 1;
                 while (listing.pageRules.some(r => r.name === ruleName)) {
                     counter++;
-                    ruleName = `${baseRuleName} (${counter})`;
+                    const suffix = ` (${counter})`;
+                    const maxLength = 255 - suffix.length;
+                    ruleName = (baseRuleName.length > maxLength ? baseRuleName.substring(0, maxLength) : baseRuleName) + suffix;
                 }
 
                 const rule: ListingPageApiPageRuleModel = {
                     name: ruleName,
                     filters: [{
-                        fieldName: row.FilterField,
+                        fieldName: filterField,
                         operator: operator,
-                        value: {
+                        value: isArrayValue ? {
+                            type: 'array',
+                            values: filterValues
+                        } : {
                             type: 'string',
-                            value: row.FilterValue
+                            value: filterValues[0] // Use parsed value instead of raw row.FilterValue
                         }
                     }]
                 };
@@ -240,7 +277,8 @@ const App: React.FC = () => {
         }
     });
 
-    return Array.from(listingsMap.values());
+    // Filter out listings with no pageRules (API requires at least one rule)
+    return Array.from(listingsMap.values()).filter(listing => listing.pageRules.length > 0);
   };
 
   const handleEnhanceWithAI = async (index: number) => {
@@ -350,6 +388,50 @@ const App: React.FC = () => {
       }
       setLoading(false);
       setIsDeleteConfirming(false);
+  };
+
+  const handleExportAllListings = async () => {
+      setLoading(true);
+      setStatus({ type: 'info', message: 'Fetching all listings...' });
+      try {
+          const allListings = await fetchAllListings(config);
+          
+          if (allListings.length === 0) {
+              setStatus({ type: 'info', message: 'No listings found to export.' });
+              setLoading(false);
+              return;
+          }
+
+          // Convert listings to CSV rows (with fallback for legacy format)
+          setStatus({ type: 'info', message: 'Converting listings to CSV format...' });
+          const csvRows = await convertListingsToCsv(allListings, config);
+          
+          // Generate CSV string using PapaParse
+          const csv = Papa.unparse(csvRows, {
+              columns: ['Name', 'UrlPattern', 'FilterField', 'FilterValue', 'FilterOperator', 'Language', 'Country', 'Currency']
+          });
+
+          // Generate filename with current date in ISO format (YYYY-MM-DD)
+          const dateStr = new Date().toISOString().split('T')[0];
+          const filename = `listings-export-${dateStr}.csv`;
+
+          // Create download link
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', filename);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          setStatus({ type: 'success', message: `Successfully exported ${allListings.length} listings (${csvRows.length} rows).` });
+      } catch (error: any) {
+          console.error("Export error", error);
+          setStatus({ type: 'error', message: `Export failed: ${error.message}` });
+      }
+      setLoading(false);
   };
 
   // --- Global Config Handlers ---
@@ -841,7 +923,7 @@ const App: React.FC = () => {
           </label>
           <p className="mt-2 text-gray-500">or drag and drop your file here</p>
         </div>
-        <p className="text-xs text-gray-400 mt-6 font-mono bg-gray-50 inline-block px-2 py-1 rounded">Required: Name, UrlPattern, FilterField, FilterValue</p>
+        <p className="text-xs text-gray-400 mt-6 font-mono bg-gray-50 inline-block px-2 py-1 rounded">Supported Columns: Name, UrlPattern, FilterField, FilterValue, FilterOperator, Language, Country, Currency</p>
       </div>
       
       <div className="text-left bg-gradient-to-r from-blue-50 to-white p-6 rounded-xl border border-blue-100 shadow-sm">
@@ -849,17 +931,18 @@ const App: React.FC = () => {
             <FileText className="w-5 h-5 mr-2" /> Example CSV Structure
         </h4>
         <pre className="text-xs text-slate-700 overflow-x-auto p-4 bg-white rounded-lg border border-slate-200 font-mono leading-relaxed shadow-inner">
-          Name,UrlPattern,FilterField,FilterValue,Language<br/>
-          "Summer Sale","https://site.com/summer",ec_category,Summer,en<br/>
-          "Summer Sale","https://site.com/ete",ec_category,Ete,fr<br/>
-          "Summer Sale","https://site.com/summer-promo",,,en
+          Name,UrlPattern,FilterField,FilterValue,FilterOperator,Language,Country,Currency<br/>
+          "Summer Sale","https://site.com/summer",ec_category,Summer,isExactly,en,,<br/>
+          "Summer Sale","https://site.com/ete",ec_category,Ete,isExactly,fr,CA,CAD<br/>
+          "Multi-Value","https://site.com/products",ec_productid,1001;1002;1003,isExactly,en,US,USD
         </pre>
         <div className="text-sm text-slate-600 mt-4 space-y-2 pl-2 border-l-4 border-coveo-blue/30">
             <p className="font-medium">Notes:</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
                 <li>Rows with the same <strong>Name</strong> are merged into a single Listing Configuration.</li>
                 <li>Use multiple rows to define <strong>arrays of URL patterns</strong> or <strong>locale-specific rules</strong>.</li>
-                <li>You can also separate multiple URLs in a single cell using semicolons (;).</li>
+                <li>Separate multiple URLs or filter values in a single cell using <strong>semicolons (;)</strong>.</li>
+                <li><strong>FilterOperator</strong> defaults to "isExactly" if not specified. Supported: isExactly, contains, isBetween, isGreaterThan, isLessThan.</li>
             </ul>
         </div>
       </div>
@@ -915,7 +998,10 @@ const App: React.FC = () => {
                                     {rule.name}
                                 </div>
                                 <div className="mt-1.5 text-gray-600 font-mono bg-gray-50/50 p-1 rounded">
-                                    {rule.filters.map(f => `${f.fieldName} ${f.operator} "${f.value.value}"`).join(', ')}
+                                    {rule.filters.map(f => {
+                                        const displayValue = f.value.values ? f.value.values.join(';') : f.value.value;
+                                        return `${f.fieldName} ${f.operator} "${displayValue}"`;
+                                    }).join(', ')}
                                 </div>
                                 {rule.locales && rule.locales.length > 0 && (
                                     <div className="mt-2 pt-1 border-t border-gray-100 flex items-center text-gray-400 text-[10px] uppercase tracking-wide">
@@ -1023,6 +1109,45 @@ const App: React.FC = () => {
 
   const renderMaintenance = () => (
       <div className="max-w-3xl mx-auto space-y-8 py-12">
+          <div className="bg-white border border-blue-100 rounded-xl p-8 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-start">
+                  <div className="flex-shrink-0 bg-blue-100 p-3 rounded-full">
+                      <Download className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-6 flex-1">
+                      <h3 className="text-xl font-bold text-gray-900">Export All Listings to CSV</h3>
+                      <div className="mt-3 text-sm text-gray-600 leading-relaxed">
+                          <p>
+                              Download all listing pages associated with the tracking ID 
+                              <span className="font-mono bg-gray-100 px-2 py-0.5 mx-1 rounded text-blue-600 font-bold border border-gray-200">{config.trackingId}</span>
+                              as a CSV file.
+                          </p>
+                          <p className="mt-2">
+                              The exported file can be edited in Excel or Google Sheets and re-imported using the Import Wizard.
+                          </p>
+                      </div>
+                      <div className="mt-8">
+                          <button
+                              onClick={handleExportAllListings}
+                              disabled={!isConfigValid || loading}
+                              className="inline-flex items-center px-6 py-3 border border-blue-200 text-sm font-bold rounded-lg shadow-sm text-white bg-coveo-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                              {loading ? (
+                                  <>
+                                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                                      Exporting...
+                                  </>
+                              ) : (
+                                  <>
+                                      <Download className="w-5 h-5 mr-2" />
+                                      Export All Listings to CSV
+                                  </>
+                              )}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
           <div className="bg-white border border-red-100 rounded-xl p-8 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start">
                   <div className="flex-shrink-0 bg-red-100 p-3 rounded-full">

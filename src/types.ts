@@ -41,9 +41,38 @@ export interface PublicListingPageRequestModel {
   pageRules: ListingPageApiPageRuleModel[];
 }
 
+// Legacy listing page format (filter rules structure)
+export interface LegacyFilterRuleModel {
+  id: string;
+  name: string;
+  filters: QueryFilterModel[];
+  locales?: RuleLocaleModel[];
+  action: 'include' | 'exclude';
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface LegacyListingRulesModel {
+  rankingRules: unknown[];
+  filterRules: LegacyFilterRuleModel[];
+  pinRules: unknown[];
+}
+
+export interface DetailedListingPageResponseModel {
+  id: string;
+  name: string;
+  trackingId?: string;
+  patterns: MatchingConfigurationModel[];
+  pageRules?: ListingPageApiPageRuleModel[];
+  rules?: LegacyListingRulesModel;
+}
+
 export interface PublicListingPageResponseModel {
   id: string;
   name: string;
+  trackingId?: string;
+  patterns: MatchingConfigurationModel[];
+  pageRules?: ListingPageApiPageRuleModel[];
 }
 
 export interface CommercePageModelPublicListingPageResponseModel {
@@ -55,12 +84,12 @@ export interface CommercePageModelPublicListingPageResponseModel {
 export interface CsvRow {
   Name: string;
   UrlPattern: string;
-  FilterField?: string;
-  FilterValue?: string;
-  FilterOperator?: string;
-  Language?: string;
-  Country?: string;
-  Currency?: string;
+  FilterField: string;
+  FilterValue: string;
+  FilterOperator: string;
+  Language: string;
+  Country: string;
+  Currency: string;
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';
