@@ -223,16 +223,26 @@ const App: React.FC = () => {
                 const localeParts = [row.Language, row.Country, row.Currency].filter(Boolean);
                 const localeSuffix = localeParts.length > 0 ? ` [${localeParts.join('-')}]` : '';
                 
-                // Generate unique descriptive name
-                const valueDisplay = isArrayValue ? filterValues.join(';') : row.FilterValue;
+                // Generate unique descriptive name (limit to 200 chars to allow for counter suffix)
+                let valueDisplay = isArrayValue ? filterValues.join(';') : row.FilterValue;
+                const maxValueLength = 150; // Leave room for field name, operator, locale, and counter
+                if (valueDisplay.length > maxValueLength) {
+                    const valueCount = isArrayValue ? filterValues.length : 1;
+                    valueDisplay = `${valueDisplay.substring(0, maxValueLength)}... (${valueCount} value${valueCount > 1 ? 's' : ''})`;
+                }
+                
                 const baseRuleName = `Rule: ${row.FilterField} ${operator} ${valueDisplay}${localeSuffix}`;
                 
+                // Ensure final name is under 255 chars
+                let ruleName = baseRuleName.length > 255 ? baseRuleName.substring(0, 250) + '...' : baseRuleName;
+                
                 // Ensure uniqueness within this listing page
-                let ruleName = baseRuleName;
                 let counter = 1;
                 while (listing.pageRules.some(r => r.name === ruleName)) {
                     counter++;
-                    ruleName = `${baseRuleName} (${counter})`;
+                    const suffix = ` (${counter})`;
+                    const maxLength = 255 - suffix.length;
+                    ruleName = (baseRuleName.length > maxLength ? baseRuleName.substring(0, maxLength) : baseRuleName) + suffix;
                 }
 
                 const rule: ListingPageApiPageRuleModel = {
@@ -909,7 +919,7 @@ const App: React.FC = () => {
           </label>
           <p className="mt-2 text-gray-500">or drag and drop your file here</p>
         </div>
-        <p className="text-xs text-gray-400 mt-6 font-mono bg-gray-50 inline-block px-2 py-1 rounded">Required: Name, UrlPattern, FilterField, FilterValue</p>
+        <p className="text-xs text-gray-400 mt-6 font-mono bg-gray-50 inline-block px-2 py-1 rounded">Supported Columns: Name, UrlPattern, FilterField, FilterValue, FilterOperator, Language, Country, Currency</p>
       </div>
       
       <div className="text-left bg-gradient-to-r from-blue-50 to-white p-6 rounded-xl border border-blue-100 shadow-sm">
@@ -917,17 +927,18 @@ const App: React.FC = () => {
             <FileText className="w-5 h-5 mr-2" /> Example CSV Structure
         </h4>
         <pre className="text-xs text-slate-700 overflow-x-auto p-4 bg-white rounded-lg border border-slate-200 font-mono leading-relaxed shadow-inner">
-          Name,UrlPattern,FilterField,FilterValue,Language<br/>
-          "Summer Sale","https://site.com/summer",ec_category,Summer,en<br/>
-          "Summer Sale","https://site.com/ete",ec_category,Ete,fr<br/>
-          "Summer Sale","https://site.com/summer-promo",,,en
+          Name,UrlPattern,FilterField,FilterValue,FilterOperator,Language,Country,Currency<br/>
+          "Summer Sale","https://site.com/summer",ec_category,Summer,isExactly,en,,<br/>
+          "Summer Sale","https://site.com/ete",ec_category,Ete,isExactly,fr,CA,CAD<br/>
+          "Multi-Value","https://site.com/products",ec_productid,1001;1002;1003,isExactly,en,US,USD
         </pre>
         <div className="text-sm text-slate-600 mt-4 space-y-2 pl-2 border-l-4 border-coveo-blue/30">
             <p className="font-medium">Notes:</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
                 <li>Rows with the same <strong>Name</strong> are merged into a single Listing Configuration.</li>
                 <li>Use multiple rows to define <strong>arrays of URL patterns</strong> or <strong>locale-specific rules</strong>.</li>
-                <li>You can also separate multiple URLs in a single cell using semicolons (;).</li>
+                <li>Separate multiple URLs or filter values in a single cell using <strong>semicolons (;)</strong>.</li>
+                <li><strong>FilterOperator</strong> defaults to "isExactly" if not specified. Supported: isExactly, contains, isBetween, isGreaterThan, isLessThan.</li>
             </ul>
         </div>
       </div>
