@@ -185,10 +185,11 @@ const App: React.FC = () => {
                 // Compare filter values
                 let valuesMatch = false;
                 if (isArrayValue) {
-                    // Compare array values
+                    // Compare array values efficiently using Set
                     const existingValues = existingFilter.value.values || [];
+                    const filterValuesSet = new Set(filterValues);
                     valuesMatch = existingValues.length === filterValues.length &&
-                        existingValues.every(v => filterValues.includes(v));
+                        existingValues.every(v => filterValuesSet.has(v));
                 } else {
                     // Compare single value
                     valuesMatch = existingFilter.value.value === row.FilterValue;
