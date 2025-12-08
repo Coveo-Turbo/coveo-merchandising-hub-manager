@@ -168,15 +168,33 @@ const App: React.FC = () => {
         if (row.FilterField) {
             const operator = row.FilterOperator || 'isExactly';
             
+            // Parse FilterValue - support semicolon-separated multiple values
+            const filterValues = row.FilterValue ? row.FilterValue.split(';').map(v => v.trim()).filter(v => v) : [];
+            const isArrayValue = filterValues.length > 1;
+            
             // Check if a rule with the same filter and locale already exists
             const isDuplicateRule = listing.pageRules.some(existingRule => {
                 // Check if filters match
-                const filtersMatch = existingRule.filters.length === 1 &&
-                    existingRule.filters[0].fieldName === row.FilterField &&
-                    existingRule.filters[0].operator === operator &&
-                    existingRule.filters[0].value.value === row.FilterValue;
+                if (existingRule.filters.length !== 1) return false;
                 
-                if (!filtersMatch) return false;
+                const existingFilter = existingRule.filters[0];
+                if (existingFilter.fieldName !== row.FilterField || existingFilter.operator !== operator) {
+                    return false;
+                }
+                
+                // Compare filter values
+                let valuesMatch = false;
+                if (isArrayValue) {
+                    // Compare array values
+                    const existingValues = existingFilter.value.values || [];
+                    valuesMatch = existingValues.length === filterValues.length &&
+                        existingValues.every(v => filterValues.includes(v));
+                } else {
+                    // Compare single value
+                    valuesMatch = existingFilter.value.value === row.FilterValue;
+                }
+                
+                if (!valuesMatch) return false;
                 
                 // Check if locales match
                 const hasLocale = !!(row.Language || row.Country || row.Currency);
@@ -205,7 +223,8 @@ const App: React.FC = () => {
                 const localeSuffix = localeParts.length > 0 ? ` [${localeParts.join('-')}]` : '';
                 
                 // Generate unique descriptive name
-                const baseRuleName = `Rule: ${row.FilterField} ${operator} ${row.FilterValue}${localeSuffix}`;
+                const valueDisplay = isArrayValue ? filterValues.join(';') : row.FilterValue;
+                const baseRuleName = `Rule: ${row.FilterField} ${operator} ${valueDisplay}${localeSuffix}`;
                 
                 // Ensure uniqueness within this listing page
                 let ruleName = baseRuleName;
@@ -220,7 +239,10 @@ const App: React.FC = () => {
                     filters: [{
                         fieldName: row.FilterField,
                         operator: operator,
-                        value: {
+                        value: isArrayValue ? {
+                            type: 'array',
+                            values: filterValues
+                        } : {
                             type: 'string',
                             value: row.FilterValue
                         }

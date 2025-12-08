@@ -8,12 +8,12 @@ import { fetchListingById } from '../services/coveoApi';
 function getFilterValueAsString(filter: QueryFilterModel): string {
   if (!filter.value) return '';
   
-  // Handle array values (join with comma, filtering out null/undefined)
+  // Handle array values (join with semicolon, filtering out null/undefined)
   if (filter.value.values && Array.isArray(filter.value.values)) {
     return filter.value.values
       .filter(v => v !== null && v !== undefined)
       .map(v => String(v))
-      .join(',');
+      .join(';');
   }
   
   // Handle single value (string or number)
