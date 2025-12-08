@@ -164,12 +164,12 @@ const App: React.FC = () => {
             });
         }
 
-        // Add Rule if filter is present
-        if (row.FilterField) {
+        // Add Rule if filter is present (skip rows without FilterField or FilterValue)
+        if (row.FilterField && row.FilterValue) {
             const operator = row.FilterOperator || 'isExactly';
             
             // Parse FilterValue - support semicolon-separated multiple values
-            const filterValues = row.FilterValue ? row.FilterValue.split(';').map(v => v.trim()).filter(v => v) : [];
+            const filterValues = row.FilterValue.split(';').map(v => v.trim()).filter(v => v);
             const isArrayValue = filterValues.length > 1;
             
             // Check if a rule with the same filter and locale already exists
@@ -255,7 +255,7 @@ const App: React.FC = () => {
                             values: filterValues
                         } : {
                             type: 'string',
-                            value: row.FilterValue
+                            value: filterValues[0] // Use parsed value instead of raw row.FilterValue
                         }
                     }]
                 };
@@ -274,7 +274,8 @@ const App: React.FC = () => {
         }
     });
 
-    return Array.from(listingsMap.values());
+    // Filter out listings with no pageRules (API requires at least one rule)
+    return Array.from(listingsMap.values()).filter(listing => listing.pageRules.length > 0);
   };
 
   const handleEnhanceWithAI = async (index: number) => {
