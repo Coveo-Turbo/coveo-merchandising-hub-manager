@@ -132,7 +132,7 @@ export const mapRowsToListings = (
               values: filterValues
             } : {
               type: 'string',
-              value: filterValues[0] // Use parsed value instead of raw row.FilterValue
+              value: filterValues[0] // Use first parsed value for single-value filter
             }
           }]
         };

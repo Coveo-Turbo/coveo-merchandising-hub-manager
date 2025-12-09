@@ -237,7 +237,8 @@ export default async (request: Request) => {
     try {
       existingListings = await fetchAllListings(config);
     } catch (e) {
-      console.warn("Could not fetch existing listings, assuming creation mode.", e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.warn("Could not fetch existing listings, assuming creation mode:", errorMessage);
     }
 
     const toCreate: PublicListingPageRequestModel[] = [];
@@ -246,6 +247,7 @@ export default async (request: Request) => {
     listings.forEach(parsed => {
       const existing = existingListings.find(e => e.name === parsed.name);
       if (existing) {
+        // Merge parsed listing with existing ID for update operation
         toUpdate.push({ ...parsed, id: existing.id });
       } else {
         toCreate.push(parsed);
