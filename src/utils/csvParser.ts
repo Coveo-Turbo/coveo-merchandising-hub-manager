@@ -68,8 +68,8 @@ export const mapRowsToListings = (
           valuesMatch = existingValues.length === filterValues.length &&
             existingValues.every(v => filterValuesSet.has(v));
         } else {
-          // Compare single value
-          valuesMatch = existingFilter.value.value === row.FilterValue;
+          // Compare single value using the first parsed value
+          valuesMatch = existingFilter.value.value === filterValues[0];
         }
         
         if (!valuesMatch) return false;
