@@ -10,14 +10,21 @@ A specialized web application designed to streamline the management of Coveo Com
 *   **Upsert Logic:** Checks for existing listings to prevent duplicates (API 412 errors) by updating existing IDs instead of failing.
 *   **AI Enhancement:** Uses Google Gemini (GenAI) to suggest relevant filter rules based on page names.
 
-### 2. Global Configuration Manager
+### 2. REST API for Programmatic Import
+*   **Automated Imports:** Trigger imports programmatically via a REST API endpoint without using the UI.
+*   **CI/CD Integration:** Integrate with GitHub Actions, Jenkins, or any automation tool.
+*   **Multiple Formats:** Accepts CSV file uploads or JSON payloads with CSV content.
+*   **See [API Documentation](./API.md) for details.**
+
+### 3. Global Configuration Manager
 *   **Search & Listing Configs:** View and edit the global configuration JSON for your Commerce organization.
 *   **Common Settings UI:** Quickly adjust `perPage`, `additionalFields`, and `sorts` using a visual interface without touching JSON.
 *   **Copy/Paste Settings:** Easily copy common settings from your Search config to your Listing config to keep them consistent.
 *   **Product Suggest & Recommendations:** Manage configurations for these subsystems as well.
 
-### 3. Maintenance Tools
+### 4. Maintenance Tools
 *   **Bulk Delete:** A "Danger Zone" utility to fetch and delete all listing pages for a specific tracking ID. Useful for resetting non-production environments.
+*   **Export:** Download all listing pages as a CSV file for backup or editing.
 
 ## Getting Started
 
@@ -86,11 +93,26 @@ Click **Push to CMH**. The app will:
 2.  Update existing listings (by ID).
 3.  Create new listings.
 
+## API Usage
+
+For programmatic imports (CI/CD, automation, batch operations), use the REST API endpoint:
+
+```bash
+curl -X POST https://your-app.netlify.app/api/import \
+  -F "file=@listings.csv" \
+  -F "organizationId=myorganization" \
+  -F "trackingId=ecommerce-site" \
+  -F "accessToken=xx-xxxx-xxxx-xxxx"
+```
+
+See the [API Documentation](./API.md) for complete details, examples, and integration guides.
+
 ## Technology Stack
 *   **Frontend:** React 19, Vite, TypeScript
 *   **Styling:** Tailwind CSS v4
 *   **Icons:** Lucide React
 *   **AI:** Google GenAI SDK
 *   **Data Parsing:** PapaParse
+*   **API:** Netlify Functions (serverless)
 
 
