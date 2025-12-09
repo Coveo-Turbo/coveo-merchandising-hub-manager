@@ -91,7 +91,19 @@ const mapRowsToListings = (rows: CsvRow[], trackingId: string): PublicListingPag
           ruleName = (baseRuleName.length > maxLength ? baseRuleName.substring(0, maxLength) : baseRuleName) + suffix;
         }
 
-        const rule = {
+        const rule: {
+          name: string;
+          filters: Array<{
+            fieldName: string;
+            operator: string;
+            value: { type: 'array'; values: string[] } | { type: 'string'; value: string };
+          }>;
+          locales?: Array<{
+            language?: string;
+            country?: string;
+            currency?: string;
+          }>;
+        } = {
           name: ruleName,
           filters: [{
             fieldName: filterField,
@@ -189,8 +201,7 @@ const bulkCreateListings = async (config: ConfigState, listings: PublicListingPa
       try {
         const errorJson = JSON.parse(errorText);
         if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (_e) {
+      } catch {
         errorMessage += `: ${errorText}`;
       }
       throw new Error(errorMessage);
@@ -233,8 +244,7 @@ const bulkUpdateListings = async (config: ConfigState, listings: PublicListingPa
       try {
         const errorJson = JSON.parse(errorText);
         if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (_e) {
+      } catch {
         errorMessage += `: ${errorText}`;
       }
       throw new Error(errorMessage);
