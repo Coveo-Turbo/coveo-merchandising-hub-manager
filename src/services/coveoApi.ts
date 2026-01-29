@@ -332,7 +332,10 @@ export interface RankingRulesResponse {
   items: RankingRuleModel[];
 }
 
-export const fetchAllRankingRules = async (config: ConfigState): Promise<RankingRuleModel[]> => {
+export const fetchAllRankingRules = async (
+  config: ConfigState, 
+  solutionType: 'listing' | 'search'
+): Promise<RankingRuleModel[]> => {
   const baseUrl = getBaseUrl(config);
   const actions = ['boost', 'bury', 'pin', 'reservedPosition'];
   let page = 0;
@@ -342,7 +345,7 @@ export const fetchAllRankingRules = async (config: ConfigState): Promise<Ranking
 
   while (hasMore) {
     const actionsParam = actions.map(a => `actions=${a}`).join('&');
-    const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?trackingId=${config.trackingId}&page=${page}&perPage=${perPage}&${actionsParam}`;
+    const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?trackingId=${config.trackingId}&solutionType=${solutionType}&page=${page}&perPage=${perPage}&${actionsParam}`;
     
     try {
       const response = await fetch(url, {

@@ -78,6 +78,7 @@ const App: React.FC = () => {
   // Ranking Rules State
   const [rankingRulesData, setRankingRulesData] = useState<RankingRuleModel[]>([]);
   const [rankingRulesJSON, setRankingRulesJSON] = useState<string>('');
+  const [rankingRulesSolutionType, setRankingRulesSolutionType] = useState<'listing' | 'search'>('listing');
 
 
   // Developer Mode Trigger (URL or Easter Egg)
@@ -397,14 +398,14 @@ const App: React.FC = () => {
     setLoading(true);
     setStatus(null);
     try {
-      const rules = await fetchAllRankingRules(config);
+      const rules = await fetchAllRankingRules(config, rankingRulesSolutionType);
       setRankingRulesData(rules);
       setRankingRulesJSON(JSON.stringify(rules, null, 2));
       setStatus({ 
         type: rules.length > 0 ? 'success' : 'info', 
         message: rules.length > 0 
-          ? `Fetched ${rules.length} ranking rule(s)` 
-          : 'No ranking rules found'
+          ? `Fetched ${rules.length} ${rankingRulesSolutionType} ranking rule(s)` 
+          : `No ${rankingRulesSolutionType} ranking rules found`
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1331,7 +1332,7 @@ const App: React.FC = () => {
                     </div>
                     <div>
                         <h2 className="text-2xl font-bold text-coveo-dark">Ranking Rules Manager</h2>
-                        <p className="text-sm text-gray-600 mt-1">Export and import ranking rules for listing pages</p>
+                        <p className="text-sm text-gray-600 mt-1">Export and import ranking rules for search and listing pages</p>
                     </div>
                 </div>
 
@@ -1344,6 +1345,36 @@ const App: React.FC = () => {
                     <p className="text-sm text-gray-600 mb-4">
                         Fetch and export all ranking rules as JSON for backup and portability.
                     </p>
+                    
+                    {/* Solution Type Selector */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Solution Type
+                        </label>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setRankingRulesSolutionType('listing')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesSolutionType === 'listing'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Listing Rules
+                            </button>
+                            <button
+                                onClick={() => setRankingRulesSolutionType('search')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesSolutionType === 'search'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Search Rules
+                            </button>
+                        </div>
+                    </div>
+                    
                     <div className="flex gap-3">
                         <button
                             onClick={handleFetchRankingRules}
