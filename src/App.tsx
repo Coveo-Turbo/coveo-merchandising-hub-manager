@@ -449,6 +449,9 @@ const App: React.FC = () => {
       }
     };
     reader.readAsText(file);
+    
+    // Reset the input value so the same file can be selected again
+    event.target.value = '';
   };
 
   const handleImportRankingRules = async () => {
@@ -476,7 +479,7 @@ const App: React.FC = () => {
       if (result.errors.length === 0) {
         setStatus({ 
           type: 'success', 
-          message: `Successfully imported ${result.success.length} rule(s)` 
+          message: `Successfully imported ${result.success.length} rule(s). Click "Fetch Rules" to see the imported rules.` 
         });
       } else if (result.success.length > 0) {
         setStatus({ 
@@ -492,8 +495,9 @@ const App: React.FC = () => {
         console.error('Failed rules:', result.errors);
       }
       
-      // Refresh the list
-      await handleFetchRankingRules();
+      // Clear the imported data so user can import another file
+      setRankingRulesData([]);
+      setRankingRulesJSON('');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setStatus({ type: 'error', message: `Import failed: ${errorMessage}` });
