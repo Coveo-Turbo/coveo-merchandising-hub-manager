@@ -420,11 +420,11 @@ const App: React.FC = () => {
 
   const handleExportRankingRules = () => {
     if (rankingRulesData.length === 0) {
-      setStatus({ type: 'error', message: 'No ranking rules to export. Fetch rules first.' });
+      setStatus({ type: 'error', message: 'No rules to export. Fetch rules first.' });
       return;
     }
-    downloadRankingRulesJSON(rankingRulesData);
-    setStatus({ type: 'success', message: 'Ranking rules exported successfully' });
+    downloadRankingRulesJSON(rankingRulesData, rankingRulesType, rankingRulesSolutionType);
+    setStatus({ type: 'success', message: 'Rules exported successfully' });
   };
 
   const handleImportRankingRulesFile = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1176,7 +1176,7 @@ const App: React.FC = () => {
   const navItems = [
       { id: 'wizard', label: 'Import Wizard', icon: LayoutList },
       { id: 'global-config', label: 'Global Config', icon: Code },
-      { id: 'ranking-rules', label: 'Ranking Rules', icon: Sparkles },
+      { id: 'ranking-rules', label: 'Rules', icon: Sparkles },
       { id: 'maintenance', label: 'Maintenance', icon: Settings }
   ];
 

@@ -129,13 +129,18 @@ export function parseRankingRulesJSON(jsonString: string): {
 /**
  * Download ranking rules as JSON file
  */
-export function downloadRankingRulesJSON(rules: RankingRuleModel[], filename?: string) {
+export function downloadRankingRulesJSON(
+  rules: RankingRuleModel[], 
+  ruleType: 'ranking' | 'filter' = 'ranking',
+  solutionType: 'listing' | 'search' = 'listing'
+) {
   const jsonString = exportRankingRulesToJSON(rules);
   const blob = new Blob([jsonString], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename || `ranking-rules-${new Date().toISOString().split('T')[0]}.json`;
+  const date = new Date().toISOString().split('T')[0];
+  link.download = `${ruleType}-rules-${solutionType}-${date}.json`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
