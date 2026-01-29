@@ -1,0 +1,102 @@
+[
+  {
+    "listingId": "example-listing-id-1",
+    "listingName": "Summer Sale Products",
+    "trackingId": "fashion_store",
+    "rules": [
+      {
+        "id": "rule-1",
+        "name": "Boost New Arrivals",
+        "matchQuery": [
+          {
+            "fieldName": "ec_category",
+            "operator": "isExactly",
+            "value": {
+              "type": "string",
+              "value": "summer-collection"
+            }
+          }
+        ],
+        "matchResult": [
+          {
+            "fieldName": "ec_product_age_days",
+            "operator": "isLessThan",
+            "value": {
+              "type": "decimal",
+              "value": 30
+            }
+          }
+        ],
+        "rankingModifier": {
+          "name": "boostFactor",
+          "value": 100
+        },
+        "isEnabled": true,
+        "isSuggested": false,
+        "locales": [
+          {
+            "language": "en",
+            "country": "US",
+            "currency": "USD"
+          }
+        ],
+        "updatedAt": "2024-01-15T10:30:00Z",
+        "updatedBy": "admin@example.com"
+      },
+      {
+        "id": "rule-2",
+        "name": "Bury Out of Stock",
+        "matchResult": [
+          {
+            "fieldName": "ec_in_stock",
+            "operator": "isExactly",
+            "value": {
+              "type": "string",
+              "value": "false"
+            }
+          }
+        ],
+        "rankingModifier": {
+          "name": "boostFactor",
+          "value": -500
+        },
+        "isEnabled": true,
+        "isSuggested": false
+      }
+    ]
+  },
+  {
+    "listingId": "example-listing-id-2",
+    "listingName": "Winter Clearance",
+    "trackingId": "fashion_store",
+    "rules": [
+      {
+        "id": "rule-3",
+        "name": "Boost High Margin Products",
+        "matchResult": [
+          {
+            "fieldName": "ec_margin_percent",
+            "operator": "isGreaterThan",
+            "value": {
+              "type": "decimal",
+              "value": 40
+            }
+          }
+        ],
+        "rankingModifier": {
+          "name": "boostFactor",
+          "value": 50
+        },
+        "isEnabled": true,
+        "isSuggested": false,
+        "locales": [
+          {
+            "language": "en",
+            "country": "US",
+            "currency": "USD"
+          }
+        ]
+      }
+    ]
+  }
+]

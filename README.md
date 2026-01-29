@@ -27,6 +27,7 @@ A specialized web application designed to streamline the management of Coveo Com
 *   **Import Validation:** Upload and validate ranking rules JSON files to ensure proper structure.
 *   **Preview Mode:** Validate ranking rules before manual application via the Merchandising Hub UI.
 *   **Note:** Direct API import of ranking rules is not supported by Coveo Commerce API v2. This tool provides export and validation capabilities.
+*   **See [Ranking Rules Documentation](./docs/RANKING_RULES.md) for detailed usage guide.**
 
 ### 5. Maintenance Tools
 *   **Bulk Delete:** A "Danger Zone" utility to fetch and delete all listing pages for a specific tracking ID. Useful for resetting non-production environments.
