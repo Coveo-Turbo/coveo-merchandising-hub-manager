@@ -9,6 +9,7 @@ export function exportRankingRulesToJSON(rules: RankingRuleModel[]): string {
 
 /**
  * Parse and validate ranking rules from JSON
+ * trackingId is optional during validation as it will be overridden during import
  */
 export function parseRankingRulesJSON(jsonString: string): {
   valid: boolean;
@@ -21,7 +22,7 @@ export function parseRankingRulesJSON(jsonString: string): {
     if (!Array.isArray(parsed)) {
       return {
         valid: false,
-        error: 'Invalid format: Expected an array of ranking rules'
+        error: 'Invalid format: Expected an array of rules'
       };
     }
     
@@ -36,10 +37,11 @@ export function parseRankingRulesJSON(jsonString: string): {
         };
       }
       
-      if (!rule.trackingId || typeof rule.trackingId !== 'string') {
+      // trackingId is optional - it will be overridden during import with the config trackingId
+      if (rule.trackingId && typeof rule.trackingId !== 'string') {
         return {
           valid: false,
-          error: `Invalid format at index ${i}: trackingId is required and must be a string`
+          error: `Invalid format at index ${i}: trackingId must be a string if provided`
         };
       }
       

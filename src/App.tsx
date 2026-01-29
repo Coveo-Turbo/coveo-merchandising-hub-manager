@@ -441,7 +441,7 @@ const App: React.FC = () => {
         setRankingRulesData(validation.data);
         setStatus({ 
           type: 'success', 
-          message: `File loaded successfully. Found ${validation.data.length} ranking rule(s). Review and confirm import.` 
+          message: `File loaded successfully. Found ${validation.data.length} rule(s). Rules will be imported to trackingId: ${config.trackingId}` 
         });
       } else {
         setStatus({ type: 'error', message: `Invalid file: ${validation.error}` });
@@ -453,18 +453,22 @@ const App: React.FC = () => {
 
   const handleImportRankingRules = async () => {
     if (rankingRulesData.length === 0) {
-      setStatus({ type: 'error', message: 'No valid ranking rules to import' });
+      setStatus({ type: 'error', message: 'No valid rules to import' });
       return;
     }
     
     setLoading(true);
-    setStatus({ type: 'info', message: 'Importing ranking rules...' });
+    setStatus({ type: 'info', message: 'Importing rules...' });
     
     try {
       // Remove id and metadata fields from rules before creating
+      // Override trackingId with the one from configuration
       const rulesToCreate = rankingRulesData.map(rule => {
         const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = rule;
-        return ruleData;
+        return {
+          ...ruleData,
+          trackingId: config.trackingId  // Override with config trackingId
+        };
       });
       
       const result = await bulkCreateRankingRules(config, rulesToCreate);
@@ -472,7 +476,7 @@ const App: React.FC = () => {
       if (result.errors.length === 0) {
         setStatus({ 
           type: 'success', 
-          message: `Successfully imported ${result.success.length} ranking rule(s)` 
+          message: `Successfully imported ${result.success.length} rule(s)` 
         });
       } else if (result.success.length > 0) {
         setStatus({ 
