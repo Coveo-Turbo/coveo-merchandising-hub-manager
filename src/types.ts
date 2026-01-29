@@ -52,34 +52,51 @@ export interface LegacyFilterRuleModel {
   updatedBy?: string;
 }
 
-// Private API Ranking Rule Model
-export interface RankingRuleCondition {
+// Private API Rule Model (supports both Ranking and Filter rules)
+export interface RuleCondition {
   field: string;
   operator: string;
   values?: string[];
   value?: string | number;
 }
 
-export interface RankingRuleDefinition {
+export interface RuleDefinition {
   boostFactor?: number;
   position?: number;
   [key: string]: unknown;
 }
 
-export interface RankingRuleModel {
+export type RuleAction = 
+  // Ranking Rule Actions
+  | 'boost' 
+  | 'bury' 
+  | 'pin' 
+  | 'reservedPosition' 
+  | 'spotlightContent'
+  // Filter Rule Actions
+  | 'include' 
+  | 'exclude' 
+  | 'onlyShow';
+
+export interface RuleModel {
   id?: string;
   name: string;
   description?: string;
   trackingId: string;
   enabled: boolean;
-  action: 'boost' | 'bury' | 'pin' | 'reservedPosition';
-  conditions?: RankingRuleCondition[];
-  definition: RankingRuleDefinition;
+  action: RuleAction;
+  conditions?: RuleCondition[];
+  definition: RuleDefinition;
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
   updatedBy?: string;
 }
+
+// Legacy type alias for backward compatibility
+export type RankingRuleModel = RuleModel;
+export type RankingRuleCondition = RuleCondition;
+export type RankingRuleDefinition = RuleDefinition;
 
 export interface LegacyListingRulesModel {
   rankingRules: RankingRuleModel[];

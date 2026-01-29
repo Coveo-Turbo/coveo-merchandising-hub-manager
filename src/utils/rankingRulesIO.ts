@@ -50,10 +50,10 @@ export function parseRankingRulesJSON(jsonString: string): {
         };
       }
       
-      if (!rule.action || !['boost', 'bury', 'pin', 'reservedPosition'].includes(rule.action)) {
+      if (!rule.action || !['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent', 'include', 'exclude', 'onlyShow'].includes(rule.action)) {
         return {
           valid: false,
-          error: `Invalid format at index ${i}: action must be one of: boost, bury, pin, reservedPosition`
+          error: `Invalid format at index ${i}: action must be one of: boost, bury, pin, reservedPosition, spotlightContent, include, exclude, onlyShow`
         };
       }
       

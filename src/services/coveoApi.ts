@@ -332,12 +332,18 @@ export interface RankingRulesResponse {
   items: RankingRuleModel[];
 }
 
-export const fetchAllRankingRules = async (
+export const fetchAllRules = async (
   config: ConfigState, 
-  solutionType: 'listing' | 'search'
+  solutionType: 'listing' | 'search',
+  ruleType: 'ranking' | 'filter'
 ): Promise<RankingRuleModel[]> => {
   const baseUrl = getBaseUrl(config);
-  const actions = ['boost', 'bury', 'pin', 'reservedPosition'];
+  
+  // Define actions based on rule type
+  const actions = ruleType === 'ranking' 
+    ? ['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent']
+    : ['include', 'exclude', 'onlyShow'];
+    
   let page = 0;
   const perPage = 100;
   let allRules: RankingRuleModel[] = [];
@@ -358,7 +364,7 @@ export const fetchAllRankingRules = async (
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to fetch ranking rules (page ${page}): ${errorText}`);
+        throw new Error(`Failed to fetch ${ruleType} rules (page ${page}): ${errorText}`);
       }
 
       const data: RankingRulesResponse = await response.json();
@@ -372,12 +378,20 @@ export const fetchAllRankingRules = async (
         page++;
       }
     } catch (error) {
-      console.error(`Failed to fetch ranking rules on page ${page}:`, error);
+      console.error(`Failed to fetch ${ruleType} rules on page ${page}:`, error);
       throw error;
     }
   }
 
   return allRules;
+};
+
+// Legacy function for backward compatibility
+export const fetchAllRankingRules = async (
+  config: ConfigState, 
+  solutionType: 'listing' | 'search'
+): Promise<RankingRuleModel[]> => {
+  return fetchAllRules(config, solutionType, 'ranking');
 };
 
 export const createRankingRule = async (

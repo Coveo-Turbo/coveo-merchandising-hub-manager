@@ -16,7 +16,7 @@ import {
     createGlobalProductSuggestConfig,
     getGlobalRecommendationsConfig,
     updateGlobalRecommendationsConfig,
-    fetchAllRankingRules,
+    fetchAllRules,
     bulkCreateRankingRules
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
@@ -79,6 +79,7 @@ const App: React.FC = () => {
   const [rankingRulesData, setRankingRulesData] = useState<RankingRuleModel[]>([]);
   const [rankingRulesJSON, setRankingRulesJSON] = useState<string>('');
   const [rankingRulesSolutionType, setRankingRulesSolutionType] = useState<'listing' | 'search'>('listing');
+  const [rankingRulesType, setRankingRulesType] = useState<'ranking' | 'filter'>('ranking');
 
 
   // Developer Mode Trigger (URL or Easter Egg)
@@ -398,18 +399,19 @@ const App: React.FC = () => {
     setLoading(true);
     setStatus(null);
     try {
-      const rules = await fetchAllRankingRules(config, rankingRulesSolutionType);
+      const rules = await fetchAllRules(config, rankingRulesSolutionType, rankingRulesType);
       setRankingRulesData(rules);
       setRankingRulesJSON(JSON.stringify(rules, null, 2));
+      const ruleTypeLabel = rankingRulesType === 'ranking' ? 'ranking' : 'filter';
       setStatus({ 
         type: rules.length > 0 ? 'success' : 'info', 
         message: rules.length > 0 
-          ? `Fetched ${rules.length} ${rankingRulesSolutionType} ranking rule(s)` 
-          : `No ${rankingRulesSolutionType} ranking rules found`
+          ? `Fetched ${rules.length} ${rankingRulesSolutionType} ${ruleTypeLabel} rule(s)` 
+          : `No ${rankingRulesSolutionType} ${ruleTypeLabel} rules found`
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setStatus({ type: 'error', message: `Failed to fetch ranking rules: ${errorMessage}` });
+      setStatus({ type: 'error', message: `Failed to fetch rules: ${errorMessage}` });
       setRankingRulesData([]);
       setRankingRulesJSON('');
     }
@@ -1331,8 +1333,8 @@ const App: React.FC = () => {
                         <Sparkles className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-bold text-coveo-dark">Ranking Rules Manager</h2>
-                        <p className="text-sm text-gray-600 mt-1">Export and import ranking rules for search and listing pages</p>
+                        <h2 className="text-2xl font-bold text-coveo-dark">Rules Manager</h2>
+                        <p className="text-sm text-gray-600 mt-1">Export and import ranking & filter rules for search and listing pages</p>
                     </div>
                 </div>
 
@@ -1340,11 +1342,40 @@ const App: React.FC = () => {
                 <div className="mb-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                         <Download className="w-5 h-5" />
-                        Export Ranking Rules
+                        Export Rules
                     </h3>
                     <p className="text-sm text-gray-600 mb-4">
-                        Fetch and export all ranking rules as JSON for backup and portability.
+                        Fetch and export ranking or filter rules as JSON for backup and portability.
                     </p>
+                    
+                    {/* Rule Type Selector */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Rule Type
+                        </label>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setRankingRulesType('ranking')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesType === 'ranking'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Ranking Rules
+                            </button>
+                            <button
+                                onClick={() => setRankingRulesType('filter')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesType === 'filter'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Filter Rules
+                            </button>
+                        </div>
+                    </div>
                     
                     {/* Solution Type Selector */}
                     <div className="mb-4">
@@ -1360,7 +1391,7 @@ const App: React.FC = () => {
                                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                             >
-                                Listing Rules
+                                Listing
                             </button>
                             <button
                                 onClick={() => setRankingRulesSolutionType('search')}
@@ -1370,7 +1401,7 @@ const App: React.FC = () => {
                                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                             >
-                                Search Rules
+                                Search
                             </button>
                         </div>
                     </div>
@@ -1438,20 +1469,20 @@ const App: React.FC = () => {
                 <div className="border-t border-gray-200 pt-8">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                         <Upload className="w-5 h-5" />
-                        Import Ranking Rules
+                        Import Rules
                     </h3>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-2">
                             <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                             <div className="text-sm text-blue-800">
                                 <p className="font-semibold mb-1">Full Import Support</p>
-                                <p>Upload a JSON file with ranking rules to import them into your Coveo organization. 
+                                <p>Upload a JSON file with ranking or filter rules to import them into your Coveo organization. 
                                 Rules will be validated and created via the private API.</p>
                             </div>
                         </div>
                     </div>
                     <p className="text-sm text-gray-600 mb-4">
-                        Upload a JSON file containing ranking rules to validate and import.
+                        Upload a JSON file containing ranking or filter rules to validate and import.
                     </p>
                     <div className="flex items-center gap-3">
                         <label className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 cursor-pointer flex items-center gap-2">
