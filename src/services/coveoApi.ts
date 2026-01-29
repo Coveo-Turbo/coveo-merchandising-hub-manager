@@ -1,5 +1,5 @@
 
-import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel, DetailedListingPageResponseModel } from '../types';
+import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel, DetailedListingPageResponseModel, RankingRuleModel } from '../types';
 
 const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
 
@@ -322,4 +322,35 @@ export const updateGlobalRecommendationsConfig = async (config: ConfigState, dat
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
+};
+
+// Ranking Rules Management
+export interface RankingRulesExportData {
+  listingId: string;
+  listingName: string;
+  trackingId: string;
+  rules: RankingRuleModel[];
+}
+
+export const fetchAllRankingRules = async (config: ConfigState): Promise<RankingRulesExportData[]> => {
+  const listings = await fetchAllListings(config);
+  const results: RankingRulesExportData[] = [];
+  
+  for (const listing of listings) {
+    try {
+      const detailed = await fetchListingById(config, listing.id);
+      if (detailed.rules?.rankingRules && detailed.rules.rankingRules.length > 0) {
+        results.push({
+          listingId: listing.id,
+          listingName: listing.name,
+          trackingId: listing.trackingId || config.trackingId,
+          rules: detailed.rules.rankingRules
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to fetch details for listing ${listing.name}:`, error);
+    }
+  }
+  
+  return results;
 };

@@ -52,8 +52,24 @@ export interface LegacyFilterRuleModel {
   updatedBy?: string;
 }
 
+export interface RankingRuleModel {
+  id?: string;
+  name: string;
+  matchQuery?: QueryFilterModel[];
+  matchResult?: QueryFilterModel[];
+  rankingModifier: {
+    name: string;
+    value: number;
+  };
+  isSuggested?: boolean;
+  isEnabled?: boolean;
+  locales?: RuleLocaleModel[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface LegacyListingRulesModel {
-  rankingRules: unknown[];
+  rankingRules: RankingRuleModel[];
   filterRules: LegacyFilterRuleModel[];
   pinRules: unknown[];
 }

@@ -15,12 +15,18 @@ import {
     updateGlobalProductSuggestConfig,
     createGlobalProductSuggestConfig,
     getGlobalRecommendationsConfig,
-    updateGlobalRecommendationsConfig
+    updateGlobalRecommendationsConfig,
+    fetchAllRankingRules,
+    type RankingRulesExportData
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
 import { convertListingsToCsv } from './utils/csvExport';
 import { mapRowsToListings as mapRowsToListingsUtil } from './utils/csvParser';
+import { 
+    downloadRankingRulesJSON,
+    parseRankingRulesJSON
+} from './utils/rankingRulesIO';
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
@@ -28,7 +34,7 @@ import {
 } from 'lucide-react';
 import Papa from 'papaparse';
 
-type AppView = 'wizard' | 'global-config' | 'maintenance';
+type AppView = 'wizard' | 'global-config' | 'maintenance' | 'ranking-rules';
 type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
 
 interface SharedSettings {
@@ -68,6 +74,10 @@ const App: React.FC = () => {
   const [pendingSortLabels, setPendingSortLabels] = useState<{language: string, value: string}[]>([]);
   const [pendingSortLang, setPendingSortLang] = useState('en');
   const [pendingSortLabelValue, setPendingSortLabelValue] = useState('');
+  
+  // Ranking Rules State
+  const [rankingRulesData, setRankingRulesData] = useState<RankingRulesExportData[]>([]);
+  const [rankingRulesJSON, setRankingRulesJSON] = useState<string>('');
 
 
   // Developer Mode Trigger (URL or Easter Egg)
@@ -379,6 +389,63 @@ const App: React.FC = () => {
           setStatus({ type: 'error', message: `Failed to save: ${error.message}` });
       }
       setLoading(false);
+  };
+
+  // --- Ranking Rules Handlers ---
+  
+  const handleFetchRankingRules = async () => {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const rules = await fetchAllRankingRules(config);
+      setRankingRulesData(rules);
+      setRankingRulesJSON(JSON.stringify(rules, null, 2));
+      setStatus({ 
+        type: rules.length > 0 ? 'success' : 'info', 
+        message: rules.length > 0 
+          ? `Fetched ${rules.length} listing(s) with ranking rules` 
+          : 'No ranking rules found in any listing pages'
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setStatus({ type: 'error', message: `Failed to fetch ranking rules: ${errorMessage}` });
+      setRankingRulesData([]);
+      setRankingRulesJSON('');
+    }
+    setLoading(false);
+  };
+
+  const handleExportRankingRules = () => {
+    if (rankingRulesData.length === 0) {
+      setStatus({ type: 'error', message: 'No ranking rules to export. Fetch rules first.' });
+      return;
+    }
+    downloadRankingRulesJSON(rankingRulesData);
+    setStatus({ type: 'success', message: 'Ranking rules exported successfully' });
+  };
+
+  const handleImportRankingRulesFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setRankingRulesJSON(content);
+      
+      const validation = parseRankingRulesJSON(content);
+      if (validation.valid && validation.data) {
+        setRankingRulesData(validation.data);
+        setStatus({ 
+          type: 'success', 
+          message: `File loaded successfully. Found ${validation.data.length} listing(s) with ranking rules. Review and confirm import.` 
+        });
+      } else {
+        setStatus({ type: 'error', message: `Invalid file: ${validation.error}` });
+        setRankingRulesData([]);
+      }
+    };
+    reader.readAsText(file);
   };
 
   // --- Renderers ---
@@ -1059,6 +1126,7 @@ const App: React.FC = () => {
   const navItems = [
       { id: 'wizard', label: 'Import Wizard', icon: LayoutList },
       { id: 'global-config', label: 'Global Config', icon: Code },
+      { id: 'ranking-rules', label: 'Ranking Rules', icon: Sparkles },
       { id: 'maintenance', label: 'Maintenance', icon: Settings }
   ];
 
@@ -1205,6 +1273,122 @@ const App: React.FC = () => {
                     <h2 className="text-2xl font-bold text-coveo-dark">Global Configuration Manager</h2>
                 </div>
                 {renderGlobalConfig()}
+            </div>
+        )}
+
+        {view === 'ranking-rules' && (
+            <div className="bg-white shadow-xl shadow-gray-100 rounded-2xl p-8 border border-gray-100">
+                <div className="flex items-center mb-8">
+                    <div className="p-2 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg mr-4">
+                        <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-coveo-dark">Ranking Rules Manager</h2>
+                        <p className="text-sm text-gray-600 mt-1">Export and import ranking rules for listing pages</p>
+                    </div>
+                </div>
+
+                {/* Export Section */}
+                <div className="mb-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Download className="w-5 h-5" />
+                        Export Ranking Rules
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Fetch and export all ranking rules from your listing pages as JSON.
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleFetchRankingRules}
+                            disabled={loading || !config.organizationId || !config.accessToken}
+                            className="px-4 py-2 bg-coveo-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            Fetch Rules
+                        </button>
+                        <button
+                            onClick={handleExportRankingRules}
+                            disabled={rankingRulesData.length === 0}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            <Download className="w-4 h-4" />
+                            Download JSON
+                        </button>
+                    </div>
+                </div>
+
+                {/* Preview Section */}
+                {rankingRulesData.length > 0 && (
+                    <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h4 className="font-semibold text-gray-900 mb-2">Preview</h4>
+                        <div className="text-sm text-gray-700 space-y-2">
+                            <p><strong>Listings with ranking rules:</strong> {rankingRulesData.length}</p>
+                            <p><strong>Total rules:</strong> {rankingRulesData.reduce((sum, data) => sum + data.rules.length, 0)}</p>
+                            <details className="mt-2">
+                                <summary className="cursor-pointer text-coveo-blue hover:underline">
+                                    View details
+                                </summary>
+                                <div className="mt-2 max-h-96 overflow-y-auto">
+                                    {rankingRulesData.map((data, idx) => (
+                                        <div key={idx} className="mb-4 p-3 bg-white rounded border border-gray-200">
+                                            <p className="font-medium">{data.listingName}</p>
+                                            <p className="text-xs text-gray-500">ID: {data.listingId}</p>
+                                            <p className="text-sm mt-1">{data.rules.length} rule(s)</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                )}
+
+                {/* Import Section */}
+                <div className="border-t border-gray-200 pt-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Upload className="w-5 h-5" />
+                        Import Ranking Rules
+                    </h3>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-start gap-2">
+                            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-yellow-800">
+                                <p className="font-semibold mb-1">Preview Only</p>
+                                <p>Direct ranking rules import via API is not currently supported by the Coveo Commerce API v2. 
+                                Use this feature to preview and validate your ranking rules JSON files. 
+                                To apply these rules, use the Coveo Merchandising Hub UI.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Upload a JSON file containing ranking rules to validate its structure.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <label className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 cursor-pointer flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            Select JSON File
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleImportRankingRulesFile}
+                                className="hidden"
+                            />
+                        </label>
+                    </div>
+                    
+                    {rankingRulesJSON && (
+                        <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                JSON Preview
+                            </label>
+                            <textarea
+                                value={rankingRulesJSON}
+                                onChange={(e) => setRankingRulesJSON(e.target.value)}
+                                className="w-full h-64 p-3 border border-gray-300 rounded-lg font-mono text-xs bg-gray-50"
+                                readOnly
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
         )}
 
