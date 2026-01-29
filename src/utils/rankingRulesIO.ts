@@ -8,8 +8,52 @@ export function exportRankingRulesToJSON(rules: RankingRuleModel[]): string {
 }
 
 /**
+ * Transform Merchandising Hub UI export format to our API format
+ */
+function transformMerchandisingHubFormat(hubRule: any): any {
+  if (hubRule.rule && typeof hubRule.rule === 'object') {
+    // This is Merchandising Hub UI format
+    const rule = hubRule.rule;
+    
+    // Map filters to conditions
+    const conditions = rule.filters?.map((filter: any) => ({
+      field: filter.fieldName,
+      operator: filter.operator,
+      value: filter.value?.values ? filter.value.values : filter.value,
+      values: filter.value?.values || undefined
+    })) || [];
+    
+    // Map value to boostFactor for boost/bury actions
+    const definition: any = {};
+    if (rule.value !== undefined) {
+      definition.boostFactor = rule.value;
+    }
+    
+    return {
+      name: rule.name,
+      description: rule.description || '',
+      trackingId: rule.trackingId,
+      enabled: true, // Default to true - rules from Merchandising Hub are active
+      action: rule.action,
+      conditions,
+      definition: Object.keys(definition).length > 0 ? definition : {}
+    };
+  }
+  
+  // Already in our format, but ensure defaults
+  return {
+    ...hubRule,
+    enabled: hubRule.enabled !== undefined ? hubRule.enabled : true,
+    description: hubRule.description || '',
+    conditions: hubRule.conditions || [],
+    definition: hubRule.definition || {}
+  };
+}
+
+/**
  * Parse and validate ranking rules from JSON
  * trackingId is optional during validation as it will be overridden during import
+ * Supports both our export format and Merchandising Hub UI export format
  */
 export function parseRankingRulesJSON(jsonString: string): {
   valid: boolean;
@@ -26,9 +70,12 @@ export function parseRankingRulesJSON(jsonString: string): {
       };
     }
     
+    // Transform rules if they're in Merchandising Hub format
+    const transformedRules = parsed.map(transformMerchandisingHubFormat);
+    
     // Validate structure
-    for (let i = 0; i < parsed.length; i++) {
-      const rule = parsed[i];
+    for (let i = 0; i < transformedRules.length; i++) {
+      const rule = transformedRules[i];
       
       if (!rule.name || typeof rule.name !== 'string') {
         return {
@@ -45,10 +92,11 @@ export function parseRankingRulesJSON(jsonString: string): {
         };
       }
       
-      if (typeof rule.enabled !== 'boolean') {
+      // enabled is optional - defaults to true if not provided
+      if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
         return {
           valid: false,
-          error: `Invalid format at index ${i}: enabled is required and must be a boolean`
+          error: `Invalid format at index ${i}: enabled must be a boolean if provided`
         };
       }
       
@@ -59,10 +107,11 @@ export function parseRankingRulesJSON(jsonString: string): {
         };
       }
       
-      if (!rule.definition || typeof rule.definition !== 'object') {
+      // definition is optional - will be created during transformation if needed
+      if (rule.definition !== undefined && typeof rule.definition !== 'object') {
         return {
           valid: false,
-          error: `Invalid format at index ${i}: definition is required and must be an object`
+          error: `Invalid format at index ${i}: definition must be an object if provided`
         };
       }
       
@@ -117,7 +166,7 @@ export function parseRankingRulesJSON(jsonString: string): {
     
     return {
       valid: true,
-      data: parsed as RankingRuleModel[]
+      data: transformedRules as RankingRuleModel[]
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
