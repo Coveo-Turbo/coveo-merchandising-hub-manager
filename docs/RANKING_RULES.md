@@ -4,112 +4,120 @@ This document explains how to use the Ranking Rules Import/Export feature in the
 
 ## Overview
 
-The Ranking Rules Manager allows you to export and validate ranking rules from your Coveo Commerce listing pages. This feature is useful for:
+The Ranking Rules Manager allows you to export and import ranking rules using Coveo's private Commerce API. This feature is useful for:
 
 - **Backup**: Export ranking rules for backup and documentation purposes
-- **Migration**: Document rules for manual application in other environments
-- **Validation**: Verify the structure of ranking rules JSON before manual import
-- **Auditing**: Review all ranking rules across your listing pages
-
-## Important Note
-
-⚠️ **API Limitation**: The Coveo Commerce API v2 does not currently provide endpoints for directly importing or updating ranking rules programmatically. Ranking rules must be managed through the Coveo Merchandising Hub UI. This tool provides export and validation capabilities only.
+- **Migration**: Transfer rules between environments (Dev → QA → Prod)
+- **Bulk Management**: Import multiple rules at once
+- **Auditing**: Review all ranking rules in your organization
 
 ## Features
 
 ### Export Ranking Rules
 
 1. Navigate to the **Ranking Rules** tab in the application
-2. Click **Fetch Rules** to retrieve all ranking rules from your listing pages
+2. Click **Fetch Rules** to retrieve all ranking rules from your organization
 3. Review the preview showing:
-   - Number of listings with ranking rules
    - Total count of rules
-   - Detailed breakdown by listing
+   - Breakdown by action type (boost, bury, pin, reservedPosition)
+   - Individual rule details
 4. Click **Download JSON** to save the rules to a file
 
-The exported JSON file contains:
-- Listing ID and name
+The exported JSON file contains complete rule metadata including:
+- Rule name and description
 - Tracking ID
-- Array of ranking rules with complete metadata
+- Action type (boost, bury, pin, reservedPosition)
+- Conditions
+- Definition (boostFactor, position, etc.)
+- Status (enabled/disabled)
 
-### Import & Validation
+### Import Ranking Rules
 
 1. Click **Select JSON File** to upload a ranking rules JSON file
 2. The system validates:
    - JSON syntax
-   - Required fields (listingId, listingName, rules)
-   - Rule structure (name, rankingModifier)
-   - Data types (finite numbers for ranking values)
-3. View validation results and preview the data
-4. Use validated rules for manual application in Merchandising Hub UI
+   - Required fields (name, trackingId, enabled, action, definition)
+   - Action types (boost, bury, pin, reservedPosition)
+   - Data types (finite numbers for boostFactor/position)
+   - Condition structure
+3. Click **Import X Rule(s)** to create the rules in your organization
+4. View import results showing success count and any errors
 
 ## JSON Structure
 
 ### Root Array
-The file must contain an array of listing objects:
+The file must contain an array of ranking rule objects:
 
 ```json
 [
   {
-    "listingId": "string",
-    "listingName": "string",
-    "trackingId": "string",
-    "rules": [ /* array of rule objects */ ]
+    "name": "string (required)",
+    "description": "string (optional)",
+    "trackingId": "string (required)",
+    "enabled": boolean (required),
+    "action": "boost" | "bury" | "pin" | "reservedPosition" (required),
+    "conditions": [ /* array of condition objects (optional) */ ],
+    "definition": { /* object with action-specific settings (required) */ }
   }
 ]
 ```
 
-### Rule Object
-Each rule in the `rules` array must have:
+### Rule Object Fields
+
+**Required Fields:**
+- `name` (string): Human-readable rule name
+- `trackingId` (string): Tracking ID for your commerce interface
+- `enabled` (boolean): Whether the rule is active
+- `action` (string): Rule type - must be one of:
+  - `"boost"`: Increase ranking score
+  - `"bury"`: Decrease ranking score
+  - `"pin"`: Pin products to specific positions
+  - `"reservedPosition"`: Reserve positions for certain products
+- `definition` (object): Action-specific configuration
+
+**Optional Fields:**
+- `description` (string): Explanation of the rule's purpose
+- `conditions` (array): When the rule should apply
+- `id` (string): Auto-generated on export, omit on import
+- `createdBy`, `createdAt`, `updatedAt`, `updatedBy`: Metadata (auto-generated)
+
+### Condition Object
 
 ```json
 {
-  "id": "string (optional)",
-  "name": "string (required)",
-  "matchQuery": [ /* array of query filters (optional) */ ],
-  "matchResult": [ /* array of result filters (optional) */ ],
-  "rankingModifier": {
-    "name": "string (required)",
-    "value": number (required, must be finite)
-  },
-  "isEnabled": boolean (optional),
-  "isSuggested": boolean (optional),
-  "locales": [ /* array of locale objects (optional) */ ],
-  "updatedAt": "ISO 8601 string (optional)",
-  "updatedBy": "string (optional)"
+  "field": "string (required)",
+  "operator": "string (required)",
+  "value": "string | number (optional)",
+  "values": ["array of strings (optional)"]
 }
 ```
 
-### Filter Object
-Used in `matchQuery` and `matchResult`:
+**Common Operators:**
+- `"equals"`: Exact match
+- `"contains"`: Partial match
+- `"greaterThan"`: Numeric comparison
+- `"lessThan"`: Numeric comparison
 
+### Definition Object
+
+The definition structure varies by action type:
+
+**For boost/bury actions:**
 ```json
 {
-  "fieldName": "string",
-  "operator": "isExactly" | "contains" | "isGreaterThan" | "isLessThan" | etc.,
-  "value": {
-    "type": "string" | "decimal" | "array",
-    "value": "string or number (for single values)",
-    "values": ["array of strings (for array type)"]
-  }
+  "boostFactor": number (required)
 }
 ```
+- Positive values boost (e.g., `100`)
+- Negative values bury (e.g., `-500`)
 
-### Locale Object
-Used for locale-specific rules:
-
+**For pin/reservedPosition actions:**
 ```json
 {
-  "language": "string (optional, e.g., 'en')",
-  "country": "string (optional, e.g., 'US')",
-  "currency": "string (optional, e.g., 'USD')"
+  "position": number (required)
 }
 ```
-
-## Common Ranking Modifier Names
-
-- `boostFactor`: Positive values boost products, negative values bury them
-  - Example: `100` to boost, `-500` to bury
+- Position in search results (1-based)
 
 ## Example Use Cases
 
@@ -117,16 +125,19 @@ Used for locale-specific rules:
 ```json
 {
   "name": "Boost New Arrivals",
-  "matchResult": [
+  "description": "Boost products added in the last 30 days",
+  "trackingId": "fashion_store",
+  "enabled": true,
+  "action": "boost",
+  "conditions": [
     {
-      "fieldName": "ec_product_age_days",
-      "operator": "isLessThan",
-      "value": { "type": "decimal", "value": 30 }
+      "field": "ec_product_age_days",
+      "operator": "lessThan",
+      "value": 30
     }
   ],
-  "rankingModifier": {
-    "name": "boostFactor",
-    "value": 100
+  "definition": {
+    "boostFactor": 100
   }
 }
 ```
@@ -135,87 +146,147 @@ Used for locale-specific rules:
 ```json
 {
   "name": "Bury Out of Stock",
-  "matchResult": [
+  "description": "Demote products that are unavailable",
+  "trackingId": "fashion_store",
+  "enabled": true,
+  "action": "bury",
+  "conditions": [
     {
-      "fieldName": "ec_in_stock",
-      "operator": "isExactly",
-      "value": { "type": "string", "value": "false" }
+      "field": "ec_in_stock",
+      "operator": "equals",
+      "value": "false"
     }
   ],
-  "rankingModifier": {
-    "name": "boostFactor",
-    "value": -500
+  "definition": {
+    "boostFactor": -500
   }
 }
 ```
 
-### 3. Promote High Margin Products
+### 3. Pin Featured Product
 ```json
 {
-  "name": "Boost High Margin",
-  "matchResult": [
+  "name": "Pin Hero Product",
+  "description": "Always show this product first",
+  "trackingId": "fashion_store",
+  "enabled": true,
+  "action": "pin",
+  "conditions": [
     {
-      "fieldName": "ec_margin_percent",
-      "operator": "isGreaterThan",
-      "value": { "type": "decimal", "value": 40 }
+      "field": "ec_product_id",
+      "operator": "equals",
+      "value": "PROD-12345"
     }
   ],
-  "rankingModifier": {
-    "name": "boostFactor",
-    "value": 50
+  "definition": {
+    "position": 1
+  }
+}
+```
+
+### 4. Reserve Top 3 for Sponsored
+```json
+{
+  "name": "Reserve Top 3 Positions",
+  "description": "Keep top 3 spots for sponsored products",
+  "trackingId": "fashion_store",
+  "enabled": true,
+  "action": "reservedPosition",
+  "conditions": [
+    {
+      "field": "ec_sponsored",
+      "operator": "equals",
+      "value": "true"
+    }
+  ],
+  "definition": {
+    "position": 3
   }
 }
 ```
 
 ## Validation Errors
 
-Common validation errors and how to fix them:
+Common validation errors and solutions:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| "Invalid format: Expected an array" | Root element is not an array | Wrap your data in `[]` |
-| "listingId is required" | Missing or non-string listingId | Add valid listingId string |
-| "rules must be an array" | rules field is not an array | Change rules to array format |
-| "rankingModifier is required" | Missing rankingModifier object | Add rankingModifier with name and value |
-| "value must be a finite number" | NaN, Infinity, or non-numeric value | Use valid finite number |
+| "Expected an array" | Root element is not an array | Wrap your data in `[]` |
+| "name is required" | Missing or non-string name | Add valid name string |
+| "trackingId is required" | Missing or non-string trackingId | Add valid trackingId string |
+| "enabled must be a boolean" | enabled is not true/false | Set to `true` or `false` |
+| "action must be one of..." | Invalid action type | Use: boost, bury, pin, or reservedPosition |
+| "definition is required" | Missing definition object | Add definition with boostFactor or position |
+| "boostFactor must be a finite number" | NaN, Infinity, or non-numeric | Use valid finite number |
 
 ## Workflow for Environment Migration
 
-1. **Export from Source Environment**
-   - Configure credentials for source environment
-   - Navigate to Ranking Rules tab
-   - Click Fetch Rules and Download JSON
+### Step 1: Export from Source
+1. Configure credentials for source environment
+2. Navigate to Ranking Rules tab
+3. Click **Fetch Rules** and **Download JSON**
 
-2. **Review and Document**
-   - Open downloaded JSON file
-   - Review rules for accuracy
-   - Document any environment-specific adjustments needed
+### Step 2: Review and Adjust
+1. Open downloaded JSON file
+2. Review rules for accuracy
+3. Adjust trackingId if needed for target environment
+4. Modify any environment-specific conditions
 
-3. **Validate for Target Environment**
-   - Configure credentials for target environment (if using same app instance)
-   - Upload JSON file to validate structure
-   - Review validation results
-
-4. **Manual Application**
-   - Open Coveo Merchandising Hub UI for target environment
-   - Navigate to each listing page mentioned in the JSON
-   - Manually create/update ranking rules based on exported data
+### Step 3: Import to Target
+1. Configure credentials for target environment
+2. Navigate to Ranking Rules tab
+3. Click **Select JSON File** and choose your file
+4. Review validation results
+5. Click **Import X Rule(s)**
+6. Verify import results
 
 ## Best Practices
 
 1. **Regular Backups**: Export ranking rules regularly for disaster recovery
-2. **Version Control**: Store exported JSON files in version control
-3. **Documentation**: Add comments in documentation files (not in JSON) about rule purposes
-4. **Testing**: Test rules in a non-production environment first
-5. **Validation**: Always validate JSON files before attempting manual import
+2. **Version Control**: Store exported JSON files in version control (Git)
+3. **Testing**: Test rules in non-production environments first
+4. **Naming Convention**: Use descriptive names for rules (e.g., "Boost - New Arrivals Q1 2024")
+5. **Documentation**: Add descriptions to explain rule purposes
+6. **Incremental Changes**: Import rules in small batches for easier troubleshooting
+7. **Review Before Import**: Always review the preview before clicking Import
+
+## Private API Details
+
+This feature uses Coveo's private Commerce API endpoints:
+
+**GET** `/rest/organizations/{orgId}/commerce/private/rules`
+- Query params: `trackingId`, `page`, `perPage`, `actions[]`
+- Retrieves ranking rules with pagination
+
+**POST** `/rest/organizations/{orgId}/commerce/private/rules`
+- Body: Rule JSON object
+- Creates a single ranking rule
+
+**Authentication**: Requires Bearer token with commerce management permissions
 
 ## Example Files
 
-See `examples/ranking-rules-example.json` for a complete example of the expected format.
+See `examples/ranking-rules-example.json` for a complete example with all action types.
+
+## Troubleshooting
+
+**Import fails with authentication error:**
+- Verify your API token has commerce management permissions
+- Check that the token is not expired
+
+**Rules not appearing after import:**
+- Confirm the trackingId matches your commerce interface
+- Check that enabled is set to true
+- Verify conditions are correctly formatted
+
+**Partial import success:**
+- Check console output for specific error messages
+- Review failed rules in the validation preview
+- Fix errors and re-import failed rules only
 
 ## Support
 
-For issues with the Ranking Rules feature or questions about Coveo Commerce API capabilities, please:
+For issues with the Ranking Rules feature:
 - Check the [Coveo Documentation](https://docs.coveo.com/)
-- Contact Coveo Support for API feature requests
+- Contact Coveo Support for private API questions
 - Open an issue in this repository for tool-specific problems

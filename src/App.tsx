@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Steps } from './components/Steps';
-import type { ConfigState, CsvRow, PublicListingPageRequestModel } from './types';
+import type { ConfigState, CsvRow, PublicListingPageRequestModel, RankingRuleModel } from './types';
 import { 
     bulkCreateListings, 
     bulkUpdateListings,
@@ -17,7 +17,7 @@ import {
     getGlobalRecommendationsConfig,
     updateGlobalRecommendationsConfig,
     fetchAllRankingRules,
-    type RankingRulesExportData
+    bulkCreateRankingRules
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
@@ -76,7 +76,7 @@ const App: React.FC = () => {
   const [pendingSortLabelValue, setPendingSortLabelValue] = useState('');
   
   // Ranking Rules State
-  const [rankingRulesData, setRankingRulesData] = useState<RankingRulesExportData[]>([]);
+  const [rankingRulesData, setRankingRulesData] = useState<RankingRuleModel[]>([]);
   const [rankingRulesJSON, setRankingRulesJSON] = useState<string>('');
 
 
@@ -403,8 +403,8 @@ const App: React.FC = () => {
       setStatus({ 
         type: rules.length > 0 ? 'success' : 'info', 
         message: rules.length > 0 
-          ? `Fetched ${rules.length} listing(s) with ranking rules` 
-          : 'No ranking rules found in any listing pages'
+          ? `Fetched ${rules.length} ranking rule(s)` 
+          : 'No ranking rules found'
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -438,7 +438,7 @@ const App: React.FC = () => {
         setRankingRulesData(validation.data);
         setStatus({ 
           type: 'success', 
-          message: `File loaded successfully. Found ${validation.data.length} listing(s) with ranking rules. Review and confirm import.` 
+          message: `File loaded successfully. Found ${validation.data.length} ranking rule(s). Review and confirm import.` 
         });
       } else {
         setStatus({ type: 'error', message: `Invalid file: ${validation.error}` });
@@ -446,6 +446,53 @@ const App: React.FC = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleImportRankingRules = async () => {
+    if (rankingRulesData.length === 0) {
+      setStatus({ type: 'error', message: 'No valid ranking rules to import' });
+      return;
+    }
+    
+    setLoading(true);
+    setStatus({ type: 'info', message: 'Importing ranking rules...' });
+    
+    try {
+      // Remove id and metadata fields from rules before creating
+      const rulesToCreate = rankingRulesData.map(rule => {
+        const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = rule;
+        return ruleData;
+      });
+      
+      const result = await bulkCreateRankingRules(config, rulesToCreate);
+      
+      if (result.errors.length === 0) {
+        setStatus({ 
+          type: 'success', 
+          message: `Successfully imported ${result.success.length} ranking rule(s)` 
+        });
+      } else if (result.success.length > 0) {
+        setStatus({ 
+          type: 'info', 
+          message: `Imported ${result.success.length} rule(s) successfully. ${result.errors.length} rule(s) failed. Check console for details.` 
+        });
+        console.error('Failed rules:', result.errors);
+      } else {
+        setStatus({ 
+          type: 'error', 
+          message: `Failed to import all rules. Check console for details.` 
+        });
+        console.error('Failed rules:', result.errors);
+      }
+      
+      // Refresh the list
+      await handleFetchRankingRules();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setStatus({ type: 'error', message: `Import failed: ${errorMessage}` });
+    }
+    
+    setLoading(false);
   };
 
   // --- Renderers ---
@@ -1295,7 +1342,7 @@ const App: React.FC = () => {
                         Export Ranking Rules
                     </h3>
                     <p className="text-sm text-gray-600 mb-4">
-                        Fetch and export all ranking rules from your listing pages as JSON.
+                        Fetch and export all ranking rules as JSON for backup and portability.
                     </p>
                     <div className="flex gap-3">
                         <button
@@ -1322,18 +1369,32 @@ const App: React.FC = () => {
                     <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <h4 className="font-semibold text-gray-900 mb-2">Preview</h4>
                         <div className="text-sm text-gray-700 space-y-2">
-                            <p><strong>Listings with ranking rules:</strong> {rankingRulesData.length}</p>
-                            <p><strong>Total rules:</strong> {rankingRulesData.reduce((sum, data) => sum + data.rules.length, 0)}</p>
+                            <p><strong>Total ranking rules:</strong> {rankingRulesData.length}</p>
+                            <div className="mt-2 space-y-1">
+                                <p><strong>By action:</strong></p>
+                                <ul className="ml-4 space-y-1">
+                                    <li>Boost: {rankingRulesData.filter(r => r.action === 'boost').length}</li>
+                                    <li>Bury: {rankingRulesData.filter(r => r.action === 'bury').length}</li>
+                                    <li>Pin: {rankingRulesData.filter(r => r.action === 'pin').length}</li>
+                                    <li>Reserved Position: {rankingRulesData.filter(r => r.action === 'reservedPosition').length}</li>
+                                </ul>
+                            </div>
                             <details className="mt-2">
                                 <summary className="cursor-pointer text-coveo-blue hover:underline">
-                                    View details
+                                    View rule details
                                 </summary>
                                 <div className="mt-2 max-h-96 overflow-y-auto">
-                                    {rankingRulesData.map((data, idx) => (
+                                    {rankingRulesData.map((rule, idx) => (
                                         <div key={idx} className="mb-4 p-3 bg-white rounded border border-gray-200">
-                                            <p className="font-medium">{data.listingName}</p>
-                                            <p className="text-xs text-gray-500">ID: {data.listingId}</p>
-                                            <p className="text-sm mt-1">{data.rules.length} rule(s)</p>
+                                            <p className="font-medium">{rule.name}</p>
+                                            <p className="text-xs text-gray-500">ID: {rule.id || 'N/A'}</p>
+                                            <p className="text-sm mt-1">
+                                                <span className="font-semibold">Action:</span> {rule.action} | 
+                                                <span className="font-semibold"> Status:</span> {rule.enabled ? 'Enabled' : 'Disabled'}
+                                            </p>
+                                            {rule.conditions && rule.conditions.length > 0 && (
+                                                <p className="text-xs text-gray-600 mt-1">{rule.conditions.length} condition(s)</p>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -1348,19 +1409,18 @@ const App: React.FC = () => {
                         <Upload className="w-5 h-5" />
                         Import Ranking Rules
                     </h3>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                         <div className="flex items-start gap-2">
-                            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                            <div className="text-sm text-yellow-800">
-                                <p className="font-semibold mb-1">Preview Only</p>
-                                <p>Direct ranking rules import via API is not currently supported by the Coveo Commerce API v2. 
-                                Use this feature to preview and validate your ranking rules JSON files. 
-                                To apply these rules, use the Coveo Merchandising Hub UI.</p>
+                            <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-blue-800">
+                                <p className="font-semibold mb-1">Full Import Support</p>
+                                <p>Upload a JSON file with ranking rules to import them into your Coveo organization. 
+                                Rules will be validated and created via the private API.</p>
                             </div>
                         </div>
                     </div>
                     <p className="text-sm text-gray-600 mb-4">
-                        Upload a JSON file containing ranking rules to validate its structure.
+                        Upload a JSON file containing ranking rules to validate and import.
                     </p>
                     <div className="flex items-center gap-3">
                         <label className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 cursor-pointer flex items-center gap-2">
@@ -1377,9 +1437,21 @@ const App: React.FC = () => {
                     
                     {rankingRulesJSON && (
                         <div className="mt-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                JSON Preview
-                            </label>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    JSON Preview
+                                </label>
+                                {rankingRulesData.length > 0 && (
+                                    <button
+                                        onClick={handleImportRankingRules}
+                                        disabled={loading}
+                                        className="px-4 py-2 bg-coveo-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        Import {rankingRulesData.length} Rule(s)
+                                    </button>
+                                )}
+                            </div>
                             <textarea
                                 value={rankingRulesJSON}
                                 className="w-full h-64 p-3 border border-gray-300 rounded-lg font-mono text-xs bg-gray-50"

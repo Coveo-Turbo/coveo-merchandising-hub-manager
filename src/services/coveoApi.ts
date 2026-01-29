@@ -324,36 +324,100 @@ export const updateGlobalRecommendationsConfig = async (config: ConfigState, dat
   return response.json();
 };
 
-// Ranking Rules Management
-export interface RankingRulesExportData {
-  listingId: string;
-  listingName: string;
-  trackingId: string;
-  rules: RankingRuleModel[];
+// Ranking Rules Management (Private API)
+export interface RankingRulesResponse {
+  page: number;
+  perPage: number;
+  totalCount: number;
+  items: RankingRuleModel[];
 }
 
-export const fetchAllRankingRules = async (config: ConfigState): Promise<RankingRulesExportData[]> => {
-  const listings = await fetchAllListings(config);
-  
-  // Fetch all listing details in parallel for better performance
-  const detailsPromises = listings.map(async (listing) => {
+export const fetchAllRankingRules = async (config: ConfigState): Promise<RankingRuleModel[]> => {
+  const baseUrl = getBaseUrl(config);
+  const actions = ['boost', 'bury', 'pin', 'reservedPosition'];
+  let page = 0;
+  const perPage = 100;
+  let allRules: RankingRuleModel[] = [];
+  let hasMore = true;
+
+  while (hasMore) {
+    const actionsParam = actions.map(a => `actions=${a}`).join('&');
+    const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?trackingId=${config.trackingId}&page=${page}&perPage=${perPage}&${actionsParam}`;
+    
     try {
-      const detailed = await fetchListingById(config, listing.id);
-      if (detailed.rules?.rankingRules && detailed.rules.rankingRules.length > 0) {
-        return {
-          listingId: listing.id,
-          listingName: listing.name,
-          trackingId: listing.trackingId || config.trackingId,
-          rules: detailed.rules.rankingRules
-        };
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: { 
+          'Authorization': `Bearer ${config.accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch ranking rules (page ${page}): ${errorText}`);
       }
-      return null;
+
+      const data: RankingRulesResponse = await response.json();
+      
+      if (!data.items || data.items.length === 0) {
+        hasMore = false;
+      } else {
+        allRules = [...allRules, ...data.items];
+        // Check if we have more pages
+        hasMore = (page + 1) * perPage < data.totalCount;
+        page++;
+      }
     } catch (error) {
-      console.error(`Failed to fetch details for listing ${listing.name}:`, error);
-      return null;
+      console.error(`Failed to fetch ranking rules on page ${page}:`, error);
+      throw error;
     }
-  });
+  }
+
+  return allRules;
+};
+
+export const createRankingRule = async (
+  config: ConfigState,
+  rule: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>
+): Promise<RankingRuleModel> => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules`;
   
-  const results = await Promise.all(detailsPromises);
-  return results.filter((result): result is RankingRulesExportData => result !== null);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(rule)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to create ranking rule: ${errorText}`);
+  }
+
+  return await response.json();
+};
+
+export const bulkCreateRankingRules = async (
+  config: ConfigState,
+  rules: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>[]
+): Promise<{ success: RankingRuleModel[], errors: Array<{ rule: string, error: string }> }> => {
+  const success: RankingRuleModel[] = [];
+  const errors: Array<{ rule: string, error: string }> = [];
+
+  for (const rule of rules) {
+    try {
+      const created = await createRankingRule(config, rule);
+      success.push(created);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      errors.push({ rule: rule.name, error: errorMessage });
+    }
+  }
+
+  return { success, errors };
 };

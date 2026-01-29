@@ -23,10 +23,10 @@ A specialized web application designed to streamline the management of Coveo Com
 *   **Product Suggest & Recommendations:** Manage configurations for these subsystems as well.
 
 ### 4. Ranking Rules Manager
-*   **Export:** Fetch and export all ranking rules from your listing pages as JSON for backup and documentation.
-*   **Import Validation:** Upload and validate ranking rules JSON files to ensure proper structure.
-*   **Preview Mode:** Validate ranking rules before manual application via the Merchandising Hub UI.
-*   **Note:** Direct API import of ranking rules is not supported by Coveo Commerce API v2. This tool provides export and validation capabilities.
+*   **Export:** Fetch and export all ranking rules as JSON for backup and portability.
+*   **Import:** Upload and import ranking rules from JSON files.
+*   **Full API Support:** Uses Coveo's private Commerce API for complete import/export functionality.
+*   **Bulk Operations:** Import multiple rules at once with validation and error reporting.
 *   **See [Ranking Rules Documentation](./docs/RANKING_RULES.md) for detailed usage guide.**
 
 ### 5. Maintenance Tools

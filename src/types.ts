@@ -52,18 +52,31 @@ export interface LegacyFilterRuleModel {
   updatedBy?: string;
 }
 
+// Private API Ranking Rule Model
+export interface RankingRuleCondition {
+  field: string;
+  operator: string;
+  values?: string[];
+  value?: string | number;
+}
+
+export interface RankingRuleDefinition {
+  boostFactor?: number;
+  position?: number;
+  [key: string]: unknown;
+}
+
 export interface RankingRuleModel {
   id?: string;
   name: string;
-  matchQuery?: QueryFilterModel[];
-  matchResult?: QueryFilterModel[];
-  rankingModifier: {
-    name: string;
-    value: number;
-  };
-  isSuggested?: boolean;
-  isEnabled?: boolean;
-  locales?: RuleLocaleModel[];
+  description?: string;
+  trackingId: string;
+  enabled: boolean;
+  action: 'boost' | 'bury' | 'pin' | 'reservedPosition';
+  conditions?: RankingRuleCondition[];
+  definition: RankingRuleDefinition;
+  createdBy?: string;
+  createdAt?: string;
   updatedAt?: string;
   updatedBy?: string;
 }

@@ -1,102 +1,87 @@
 [
   {
-    "listingId": "example-listing-id-1",
-    "listingName": "Summer Sale Products",
+    "name": "Boost New Arrivals",
+    "description": "Boost products that arrived in the last 30 days",
     "trackingId": "fashion_store",
-    "rules": [
+    "enabled": true,
+    "action": "boost",
+    "conditions": [
       {
-        "id": "rule-1",
-        "name": "Boost New Arrivals",
-        "matchQuery": [
-          {
-            "fieldName": "ec_category",
-            "operator": "isExactly",
-            "value": {
-              "type": "string",
-              "value": "summer-collection"
-            }
-          }
-        ],
-        "matchResult": [
-          {
-            "fieldName": "ec_product_age_days",
-            "operator": "isLessThan",
-            "value": {
-              "type": "decimal",
-              "value": 30
-            }
-          }
-        ],
-        "rankingModifier": {
-          "name": "boostFactor",
-          "value": 100
-        },
-        "isEnabled": true,
-        "isSuggested": false,
-        "locales": [
-          {
-            "language": "en",
-            "country": "US",
-            "currency": "USD"
-          }
-        ],
-        "updatedAt": "2024-01-15T10:30:00Z",
-        "updatedBy": "admin@example.com"
-      },
-      {
-        "id": "rule-2",
-        "name": "Bury Out of Stock",
-        "matchResult": [
-          {
-            "fieldName": "ec_in_stock",
-            "operator": "isExactly",
-            "value": {
-              "type": "string",
-              "value": "false"
-            }
-          }
-        ],
-        "rankingModifier": {
-          "name": "boostFactor",
-          "value": -500
-        },
-        "isEnabled": true,
-        "isSuggested": false
+        "field": "ec_category",
+        "operator": "equals",
+        "values": ["summer-collection"]
       }
-    ]
+    ],
+    "definition": {
+      "boostFactor": 100
+    }
   },
   {
-    "listingId": "example-listing-id-2",
-    "listingName": "Winter Clearance",
+    "name": "Bury Out of Stock Items",
+    "description": "Demote products that are out of stock",
     "trackingId": "fashion_store",
-    "rules": [
+    "enabled": true,
+    "action": "bury",
+    "conditions": [
       {
-        "id": "rule-3",
-        "name": "Boost High Margin Products",
-        "matchResult": [
-          {
-            "fieldName": "ec_margin_percent",
-            "operator": "isGreaterThan",
-            "value": {
-              "type": "decimal",
-              "value": 40
-            }
-          }
-        ],
-        "rankingModifier": {
-          "name": "boostFactor",
-          "value": 50
-        },
-        "isEnabled": true,
-        "isSuggested": false,
-        "locales": [
-          {
-            "language": "en",
-            "country": "US",
-            "currency": "USD"
-          }
-        ]
+        "field": "ec_in_stock",
+        "operator": "equals",
+        "value": "false"
       }
-    ]
+    ],
+    "definition": {
+      "boostFactor": -500
+    }
+  },
+  {
+    "name": "Promote High Margin Products",
+    "description": "Boost products with high profit margins",
+    "trackingId": "fashion_store",
+    "enabled": true,
+    "action": "boost",
+    "conditions": [
+      {
+        "field": "ec_margin_percent",
+        "operator": "greaterThan",
+        "value": 40
+      }
+    ],
+    "definition": {
+      "boostFactor": 50
+    }
+  },
+  {
+    "name": "Pin Featured Product",
+    "description": "Pin a specific product to position 1",
+    "trackingId": "fashion_store",
+    "enabled": true,
+    "action": "pin",
+    "conditions": [
+      {
+        "field": "ec_product_id",
+        "operator": "equals",
+        "value": "PROD-12345"
+      }
+    ],
+    "definition": {
+      "position": 1
+    }
+  },
+  {
+    "name": "Reserve Top 3 for Sponsored",
+    "description": "Reserve top 3 positions for sponsored products",
+    "trackingId": "fashion_store",
+    "enabled": true,
+    "action": "reservedPosition",
+    "conditions": [
+      {
+        "field": "ec_sponsored",
+        "operator": "equals",
+        "value": "true"
+      }
+    ],
+    "definition": {
+      "position": 3
+    }
   }
 ]
