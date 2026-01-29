@@ -334,23 +334,26 @@ export interface RankingRulesExportData {
 
 export const fetchAllRankingRules = async (config: ConfigState): Promise<RankingRulesExportData[]> => {
   const listings = await fetchAllListings(config);
-  const results: RankingRulesExportData[] = [];
   
-  for (const listing of listings) {
+  // Fetch all listing details in parallel for better performance
+  const detailsPromises = listings.map(async (listing) => {
     try {
       const detailed = await fetchListingById(config, listing.id);
       if (detailed.rules?.rankingRules && detailed.rules.rankingRules.length > 0) {
-        results.push({
+        return {
           listingId: listing.id,
           listingName: listing.name,
           trackingId: listing.trackingId || config.trackingId,
           rules: detailed.rules.rankingRules
-        });
+        };
       }
+      return null;
     } catch (error) {
       console.error(`Failed to fetch details for listing ${listing.name}:`, error);
+      return null;
     }
-  }
+  });
   
-  return results;
+  const results = await Promise.all(detailsPromises);
+  return results.filter((result): result is RankingRulesExportData => result !== null);
 };

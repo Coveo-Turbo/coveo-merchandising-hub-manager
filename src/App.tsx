@@ -1382,7 +1382,6 @@ const App: React.FC = () => {
                             </label>
                             <textarea
                                 value={rankingRulesJSON}
-                                onChange={(e) => setRankingRulesJSON(e.target.value)}
                                 className="w-full h-64 p-3 border border-gray-300 rounded-lg font-mono text-xs bg-gray-50"
                                 readOnly
                             />

@@ -22,7 +22,13 @@ A specialized web application designed to streamline the management of Coveo Com
 *   **Copy/Paste Settings:** Easily copy common settings from your Search config to your Listing config to keep them consistent.
 *   **Product Suggest & Recommendations:** Manage configurations for these subsystems as well.
 
-### 4. Maintenance Tools
+### 4. Ranking Rules Manager
+*   **Export:** Fetch and export all ranking rules from your listing pages as JSON for backup and documentation.
+*   **Import Validation:** Upload and validate ranking rules JSON files to ensure proper structure.
+*   **Preview Mode:** Validate ranking rules before manual application via the Merchandising Hub UI.
+*   **Note:** Direct API import of ranking rules is not supported by Coveo Commerce API v2. This tool provides export and validation capabilities.
+
+### 5. Maintenance Tools
 *   **Bulk Delete:** A "Danger Zone" utility to fetch and delete all listing pages for a specific tracking ID. Useful for resetting non-production environments.
 *   **Export:** Download all listing pages as a CSV file for backup or editing.
 

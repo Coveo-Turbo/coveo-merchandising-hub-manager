@@ -1,13 +1,5 @@
 import type { RankingRulesExportData } from '../services/coveoApi';
 
-export interface RankingRulesImportResult {
-  success: boolean;
-  message: string;
-  listingId?: string;
-  listingName?: string;
-  errors?: string[];
-}
-
 /**
  * Export ranking rules to JSON format
  */
@@ -83,10 +75,10 @@ export function parseRankingRulesJSON(jsonString: string): {
           };
         }
         
-        if (typeof rule.rankingModifier.value !== 'number') {
+        if (typeof rule.rankingModifier.value !== 'number' || !Number.isFinite(rule.rankingModifier.value)) {
           return {
             valid: false,
-            error: `Invalid rule at index ${i}, rule ${j}: rankingModifier.value must be a number`
+            error: `Invalid rule at index ${i}, rule ${j}: rankingModifier.value must be a finite number`
           };
         }
       }
