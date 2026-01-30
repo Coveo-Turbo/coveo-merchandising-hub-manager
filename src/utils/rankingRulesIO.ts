@@ -150,17 +150,19 @@ export function parseRankingRulesJSON(jsonString: string): {
         if (!Array.isArray(conditionsOrFilters)) {
           return {
             valid: false,
-            error: `Invalid format at index ${i}: conditions must be an array`
+            error: `Invalid format at index ${i}: conditions/filters must be an array`
           };
         }
         
-        for (let j = 0; j < rule.conditions.length; j++) {
-          const condition = rule.conditions[j];
+        for (let j = 0; j < conditionsOrFilters.length; j++) {
+          const condition = conditionsOrFilters[j];
           
-          if (!condition.field || typeof condition.field !== 'string') {
+          // For Hub UI format, fields are 'fieldName' not 'field'
+          const fieldName = condition.field || condition.fieldName;
+          if (!fieldName || typeof fieldName !== 'string') {
             return {
               valid: false,
-              error: `Invalid condition at index ${i}, condition ${j}: field is required and must be a string`
+              error: `Invalid condition at index ${i}, condition ${j}: field/fieldName is required and must be a string`
             };
           }
           
