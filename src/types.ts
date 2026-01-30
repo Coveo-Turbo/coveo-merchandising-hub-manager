@@ -52,8 +52,90 @@ export interface LegacyFilterRuleModel {
   updatedBy?: string;
 }
 
+// Private API Rule Model (supports both Ranking and Filter rules)
+export interface RuleCondition {
+  field: string;
+  operator: string;
+  values?: string[];
+  value?: string | number;
+}
+
+export interface RuleDefinition {
+  boostFactor?: number;
+  position?: number;
+  [key: string]: unknown;
+}
+
+export type RuleAction = 
+  // Ranking Rule Actions
+  | 'boost' 
+  | 'bury' 
+  | 'pin' 
+  | 'reservedPosition' 
+  | 'spotlightContent'
+  // Filter Rule Actions
+  | 'include' 
+  | 'exclude' 
+  | 'onlyShow';
+
+export interface RuleModel {
+  id?: string;
+  name: string;
+  description?: string;
+  trackingId: string;
+  enabled: boolean;
+  action: RuleAction;
+  conditions?: RuleCondition[];
+  definition: RuleDefinition;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+// Merchandising Hub UI export format
+export interface MerchandisingHubRulePayload {
+  rule: {
+    name: string;
+    description?: string;
+    action: RuleAction;
+    trackingId: string;
+    enabled?: boolean;
+    type?: string;
+    filters?: Array<{
+      fieldName: string;
+      operator: string;
+      value?: {
+        type?: string;
+        values?: string[];
+      };
+    }>;
+    value?: number;
+    locales?: any[];
+    rulePrecondition?: any;
+    audienceConditions?: any[];
+    updatedAt?: number;
+    updatedBy?: string;
+    id?: string;
+    createdBy?: string;
+    createdAt?: string;
+  };
+  solutionType?: 'listing' | 'search';
+  schedule?: any;
+  ruleTargets?: any;
+  isGlobal?: boolean;
+}
+
+// Union type for both formats
+export type RuleImportModel = RuleModel | MerchandisingHubRulePayload;
+
+// Legacy type alias for backward compatibility
+export type RankingRuleModel = RuleModel;
+export type RankingRuleCondition = RuleCondition;
+export type RankingRuleDefinition = RuleDefinition;
+
 export interface LegacyListingRulesModel {
-  rankingRules: unknown[];
+  rankingRules: RankingRuleModel[];
   filterRules: LegacyFilterRuleModel[];
   pinRules: unknown[];
 }
