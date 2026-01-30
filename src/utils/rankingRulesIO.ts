@@ -8,45 +8,43 @@ export function exportRankingRulesToJSON(rules: RankingRuleModel[]): string {
 }
 
 /**
- * Transform Merchandising Hub UI export format to our API format
+ * Transform/validate Merchandising Hub UI export format
+ * Preserves the original Hub UI format since the API expects it
  */
 function transformMerchandisingHubFormat(hubRule: any): any {
   if (hubRule.rule && typeof hubRule.rule === 'object') {
-    // This is Merchandising Hub UI format
-    const rule = hubRule.rule;
-    
-    // Map filters to conditions
-    const conditions = rule.filters?.map((filter: any) => ({
-      field: filter.fieldName,
-      operator: filter.operator,
-      value: filter.value?.values ? filter.value.values : filter.value,
-      values: filter.value?.values || undefined
-    })) || [];
-    
-    // Map value to boostFactor for boost/bury actions
-    const definition: any = {};
-    if (rule.value !== undefined) {
-      definition.boostFactor = rule.value;
-    }
-    
-    return {
-      name: rule.name,
-      description: rule.description || '',
-      trackingId: rule.trackingId,
-      enabled: true, // Default to true - rules from Merchandising Hub are active
-      action: rule.action,
-      conditions,
-      definition: Object.keys(definition).length > 0 ? definition : {}
-    };
+    // This is Merchandising Hub UI format - preserve it as-is
+    // The API expects this exact structure with filters, value, etc.
+    return hubRule;
   }
   
-  // Already in our format, but ensure defaults
+  // If it's in a flat format (our own export), convert it to Hub UI format
+  // This ensures compatibility with the API
   return {
-    ...hubRule,
-    enabled: hubRule.enabled !== undefined ? hubRule.enabled : true,
-    description: hubRule.description || '',
-    conditions: hubRule.conditions || [],
-    definition: hubRule.definition || {}
+    rule: {
+      name: hubRule.name,
+      description: hubRule.description || '',
+      action: hubRule.action,
+      trackingId: hubRule.trackingId,
+      enabled: hubRule.enabled !== undefined ? hubRule.enabled : true,
+      type: hubRule.action === 'include' || hubRule.action === 'exclude' || hubRule.action === 'onlyShow' ? 'filter' : 'ranking',
+      filters: hubRule.conditions?.map((cond: any) => ({
+        fieldName: cond.field,
+        operator: cond.operator,
+        value: {
+          type: 'array',
+          values: cond.values || (Array.isArray(cond.value) ? cond.value : [cond.value])
+        }
+      })) || [],
+      value: hubRule.definition?.boostFactor || hubRule.definition?.position || 0,
+      locales: [],
+      rulePrecondition: null,
+      audienceConditions: []
+    },
+    solutionType: null, // Will be set during import
+    schedule: null,
+    ruleTargets: null,
+    isGlobal: true
   };
 }
 
@@ -57,7 +55,7 @@ function transformMerchandisingHubFormat(hubRule: any): any {
  */
 export function parseRankingRulesJSON(jsonString: string): {
   valid: boolean;
-  data?: RankingRuleModel[];
+  data?: import('../types').RuleImportModel[];
   error?: string;
 } {
   try {
@@ -75,7 +73,8 @@ export function parseRankingRulesJSON(jsonString: string): {
     
     // Validate structure
     for (let i = 0; i < transformedRules.length; i++) {
-      const rule = transformedRules[i];
+      const item = transformedRules[i];
+      const rule = item.rule || item; // Support both wrapped (Hub UI) and flat format
       
       if (!rule.name || typeof rule.name !== 'string') {
         return {
@@ -107,7 +106,17 @@ export function parseRankingRulesJSON(jsonString: string): {
         };
       }
       
-      // definition is optional - will be created during transformation if needed
+      // Validate value (Hub UI format) or definition.boostFactor (flat format)
+      if (rule.value !== undefined) {
+        if (typeof rule.value !== 'number' || !Number.isFinite(rule.value)) {
+          return {
+            valid: false,
+            error: `Invalid format at index ${i}: value must be a finite number`
+          };
+        }
+      }
+      
+      // definition is optional
       if (rule.definition !== undefined && typeof rule.definition !== 'object') {
         return {
           valid: false,
@@ -116,7 +125,7 @@ export function parseRankingRulesJSON(jsonString: string): {
       }
       
       // Validate boostFactor if present
-      if (rule.definition.boostFactor !== undefined) {
+      if (rule.definition?.boostFactor !== undefined) {
         if (typeof rule.definition.boostFactor !== 'number' || !Number.isFinite(rule.definition.boostFactor)) {
           return {
             valid: false,
@@ -126,7 +135,7 @@ export function parseRankingRulesJSON(jsonString: string): {
       }
       
       // Validate position if present
-      if (rule.definition.position !== undefined) {
+      if (rule.definition?.position !== undefined) {
         if (typeof rule.definition.position !== 'number' || !Number.isFinite(rule.definition.position) || rule.definition.position < 0) {
           return {
             valid: false,
@@ -135,9 +144,10 @@ export function parseRankingRulesJSON(jsonString: string): {
         }
       }
       
-      // Validate conditions if present
-      if (rule.conditions !== undefined) {
-        if (!Array.isArray(rule.conditions)) {
+      // Validate conditions (flat format) or filters (Hub UI format)
+      const conditionsOrFilters = rule.conditions || rule.filters;
+      if (conditionsOrFilters !== undefined) {
+        if (!Array.isArray(conditionsOrFilters)) {
           return {
             valid: false,
             error: `Invalid format at index ${i}: conditions must be an array`
@@ -181,11 +191,11 @@ export function parseRankingRulesJSON(jsonString: string): {
  * Download ranking rules as JSON file
  */
 export function downloadRankingRulesJSON(
-  rules: RankingRuleModel[], 
+  rules: import('../types').RuleImportModel[], 
   ruleType: 'ranking' | 'filter' = 'ranking',
   solutionType: 'listing' | 'search' = 'listing'
 ) {
-  const jsonString = exportRankingRulesToJSON(rules);
+  const jsonString = exportRankingRulesToJSON(rules as any);
   const blob = new Blob([jsonString], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

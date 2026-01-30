@@ -93,6 +93,42 @@ export interface RuleModel {
   updatedBy?: string;
 }
 
+// Merchandising Hub UI export format
+export interface MerchandisingHubRulePayload {
+  rule: {
+    name: string;
+    description?: string;
+    action: RuleAction;
+    trackingId: string;
+    enabled?: boolean;
+    type?: string;
+    filters?: Array<{
+      fieldName: string;
+      operator: string;
+      value?: {
+        type?: string;
+        values?: string[];
+      };
+    }>;
+    value?: number;
+    locales?: any[];
+    rulePrecondition?: any;
+    audienceConditions?: any[];
+    updatedAt?: number;
+    updatedBy?: string;
+    id?: string;
+    createdBy?: string;
+    createdAt?: string;
+  };
+  solutionType?: 'listing' | 'search';
+  schedule?: any;
+  ruleTargets?: any;
+  isGlobal?: boolean;
+}
+
+// Union type for both formats
+export type RuleImportModel = RuleModel | MerchandisingHubRulePayload;
+
 // Legacy type alias for backward compatibility
 export type RankingRuleModel = RuleModel;
 export type RankingRuleCondition = RuleCondition;

@@ -396,11 +396,18 @@ export const fetchAllRankingRules = async (
 
 export const createRankingRule = async (
   config: ConfigState,
-  rule: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>,
+  rulePayload: any, // Now accepts the full Hub UI format payload
   solutionType: 'listing' | 'search'
-): Promise<RankingRuleModel> => {
+): Promise<any> => {
   const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?solutionType=${solutionType}`;
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules`;
+  
+  // The payload should already be in the correct format: { rule: {...}, solutionType, schedule, ruleTargets, isGlobal }
+  // Ensure solutionType is set correctly
+  const payload = {
+    ...rulePayload,
+    solutionType: solutionType
+  };
   
   const response = await fetch(url, {
     method: 'POST',
@@ -409,7 +416,7 @@ export const createRankingRule = async (
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     },
-    body: JSON.stringify(rule)
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
@@ -422,19 +429,20 @@ export const createRankingRule = async (
 
 export const bulkCreateRankingRules = async (
   config: ConfigState,
-  rules: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>[],
+  rules: any[], // Now accepts full Hub UI format payloads
   solutionType: 'listing' | 'search'
-): Promise<{ success: RankingRuleModel[], errors: Array<{ rule: string, error: string }> }> => {
-  const success: RankingRuleModel[] = [];
+): Promise<{ success: any[], errors: Array<{ rule: string, error: string }> }> => {
+  const success: any[] = [];
   const errors: Array<{ rule: string, error: string }> = [];
 
-  for (const rule of rules) {
+  for (const rulePayload of rules) {
     try {
-      const created = await createRankingRule(config, rule, solutionType);
+      const created = await createRankingRule(config, rulePayload, solutionType);
       success.push(created);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      errors.push({ rule: rule.name, error: errorMessage });
+      const ruleName = rulePayload.rule?.name || rulePayload.name || 'Unknown rule';
+      errors.push({ rule: ruleName, error: errorMessage });
     }
   }
 

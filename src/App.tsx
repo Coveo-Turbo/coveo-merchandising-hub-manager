@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Steps } from './components/Steps';
-import type { ConfigState, CsvRow, PublicListingPageRequestModel, RankingRuleModel } from './types';
+import type { ConfigState, CsvRow, PublicListingPageRequestModel, RuleImportModel } from './types';
 import { 
     bulkCreateListings, 
     bulkUpdateListings,
@@ -76,7 +76,7 @@ const App: React.FC = () => {
   const [pendingSortLabelValue, setPendingSortLabelValue] = useState('');
   
   // Ranking Rules State
-  const [rankingRulesData, setRankingRulesData] = useState<RankingRuleModel[]>([]);
+  const [rankingRulesData, setRankingRulesData] = useState<RuleImportModel[]>([]);
   const [rankingRulesJSON, setRankingRulesJSON] = useState<string>('');
   const [rankingRulesSolutionType, setRankingRulesSolutionType] = useState<'listing' | 'search'>('listing');
   const [rankingRulesType, setRankingRulesType] = useState<'ranking' | 'filter'>('ranking');
@@ -464,14 +464,38 @@ const App: React.FC = () => {
     setStatus({ type: 'info', message: 'Importing rules...' });
     
     try {
-      // Remove id and metadata fields from rules before creating
-      // Override trackingId with the one from configuration
-      const rulesToCreate = rankingRulesData.map(rule => {
-        const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = rule;
-        return {
-          ...ruleData,
-          trackingId: config.trackingId  // Override with config trackingId
-        };
+      // Transform rules to the Hub UI format expected by the API
+      // The API expects: { rule: {...}, solutionType, schedule, ruleTargets, isGlobal }
+      const rulesToCreate = rankingRulesData.map(item => {
+        // Check if already in Hub UI format (has 'rule' property)
+        if ('rule' in item && item.rule && typeof item.rule === 'object') {
+          // Already in Hub UI format, just override trackingId and solutionType
+          const hubItem = item as any;
+          const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = hubItem.rule;
+          return {
+            rule: {
+              ...ruleData,
+              trackingId: config.trackingId  // Override with config trackingId
+            },
+            solutionType: rankingRulesSolutionType,
+            schedule: hubItem.schedule || null,
+            ruleTargets: hubItem.ruleTargets || null,
+            isGlobal: hubItem.isGlobal !== undefined ? hubItem.isGlobal : true
+          };
+        } else {
+          // Flat format, need to wrap it
+          const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = item as any;
+          return {
+            rule: {
+              ...ruleData,
+              trackingId: config.trackingId  // Override with config trackingId
+            },
+            solutionType: rankingRulesSolutionType,
+            schedule: null,
+            ruleTargets: null,
+            isGlobal: true
+          };
+        }
       });
       
       const result = await bulkCreateRankingRules(config, rulesToCreate, rankingRulesSolutionType);
@@ -1443,10 +1467,10 @@ const App: React.FC = () => {
                             <div className="mt-2 space-y-1">
                                 <p><strong>By action:</strong></p>
                                 <ul className="ml-4 space-y-1">
-                                    <li>Boost: {rankingRulesData.filter(r => r.action === 'boost').length}</li>
-                                    <li>Bury: {rankingRulesData.filter(r => r.action === 'bury').length}</li>
-                                    <li>Pin: {rankingRulesData.filter(r => r.action === 'pin').length}</li>
-                                    <li>Reserved Position: {rankingRulesData.filter(r => r.action === 'reservedPosition').length}</li>
+                                    <li>Boost: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'boost').length}</li>
+                                    <li>Bury: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'bury').length}</li>
+                                    <li>Pin: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'pin').length}</li>
+                                    <li>Reserved Position: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'reservedPosition').length}</li>
                                 </ul>
                             </div>
                             <details className="mt-2">
@@ -1454,19 +1478,23 @@ const App: React.FC = () => {
                                     View rule details
                                 </summary>
                                 <div className="mt-2 max-h-96 overflow-y-auto">
-                                    {rankingRulesData.map((rule, idx) => (
-                                        <div key={idx} className="mb-4 p-3 bg-white rounded border border-gray-200">
-                                            <p className="font-medium">{rule.name}</p>
-                                            <p className="text-xs text-gray-500">ID: {rule.id || 'N/A'}</p>
-                                            <p className="text-sm mt-1">
-                                                <span className="font-semibold">Action:</span> {rule.action} | 
-                                                <span className="font-semibold"> Status:</span> {rule.enabled ? 'Enabled' : 'Disabled'}
-                                            </p>
-                                            {rule.conditions && rule.conditions.length > 0 && (
-                                                <p className="text-xs text-gray-600 mt-1">{rule.conditions.length} condition(s)</p>
-                                            )}
-                                        </div>
-                                    ))}
+                                    {rankingRulesData.map((item, idx) => {
+                                        // Handle both flat and Hub UI format
+                                        const rule = (item as any).rule || item;
+                                        return (
+                                            <div key={idx} className="mb-4 p-3 bg-white rounded border border-gray-200">
+                                                <p className="font-medium">{rule.name}</p>
+                                                <p className="text-xs text-gray-500">ID: {rule.id || 'N/A'}</p>
+                                                <p className="text-sm mt-1">
+                                                    <span className="font-semibold">Action:</span> {rule.action} | 
+                                                    <span className="font-semibold"> Status:</span> {rule.enabled !== undefined ? (rule.enabled ? 'Enabled' : 'Disabled') : 'Enabled'}
+                                                </p>
+                                                {((rule.conditions && rule.conditions.length > 0) || (rule.filters && rule.filters.length > 0)) && (
+                                                    <p className="text-xs text-gray-600 mt-1">{(rule.conditions || rule.filters).length} condition(s)</p>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </details>
                         </div>
