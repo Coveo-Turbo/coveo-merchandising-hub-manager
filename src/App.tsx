@@ -474,7 +474,7 @@ const App: React.FC = () => {
         };
       });
       
-      const result = await bulkCreateRankingRules(config, rulesToCreate);
+      const result = await bulkCreateRankingRules(config, rulesToCreate, rankingRulesSolutionType);
       
       if (result.errors.length === 0) {
         setStatus({ 

@@ -396,10 +396,11 @@ export const fetchAllRankingRules = async (
 
 export const createRankingRule = async (
   config: ConfigState,
-  rule: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>
+  rule: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>,
+  solutionType: 'listing' | 'search'
 ): Promise<RankingRuleModel> => {
   const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules`;
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?solutionType=${solutionType}`;
   
   const response = await fetch(url, {
     method: 'POST',
@@ -421,14 +422,15 @@ export const createRankingRule = async (
 
 export const bulkCreateRankingRules = async (
   config: ConfigState,
-  rules: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>[]
+  rules: Omit<RankingRuleModel, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'updatedBy'>[],
+  solutionType: 'listing' | 'search'
 ): Promise<{ success: RankingRuleModel[], errors: Array<{ rule: string, error: string }> }> => {
   const success: RankingRuleModel[] = [];
   const errors: Array<{ rule: string, error: string }> = [];
 
   for (const rule of rules) {
     try {
-      const created = await createRankingRule(config, rule);
+      const created = await createRankingRule(config, rule, solutionType);
       success.push(created);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
