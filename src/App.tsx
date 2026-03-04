@@ -23,10 +23,18 @@ import {
     updateGlobalProductSuggestConfig,
     createGlobalProductSuggestConfig,
     getGlobalRecommendationsConfig,
-    updateGlobalRecommendationsConfig
+    updateGlobalRecommendationsConfig,
+    fetchAllRules,
+    bulkCreateRankingRules
 } from './services/coveoApi';
 import { enhanceListingWithAI } from './services/geminiService';
 import { SAMPLE_CONFIGS } from './services/sampleConfigs';
+import { convertListingsToCsv } from './utils/csvExport';
+import { mapRowsToListings as mapRowsToListingsUtil } from './utils/csvParser';
+import { 
+    downloadRankingRulesJSON,
+    parseRankingRulesJSON
+} from './utils/rankingRulesIO';
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
@@ -34,7 +42,7 @@ import {
 } from 'lucide-react';
 import Papa from 'papaparse';
 
-type AppView = 'wizard' | 'global-config' | 'maintenance';
+type AppView = 'wizard' | 'global-config' | 'maintenance' | 'ranking-rules';
 type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
 
 interface SharedSettings {
@@ -112,6 +120,12 @@ const App: React.FC = () => {
   const [pendingSortLabels, setPendingSortLabels] = useState<{language: string, value: string}[]>([]);
   const [pendingSortLang, setPendingSortLang] = useState('en');
   const [pendingSortLabelValue, setPendingSortLabelValue] = useState('');
+  
+  // Ranking Rules State
+  const [rankingRulesData, setRankingRulesData] = useState<RuleImportModel[]>([]);
+  const [rankingRulesJSON, setRankingRulesJSON] = useState<string>('');
+  const [rankingRulesSolutionType, setRankingRulesSolutionType] = useState<'listing' | 'search'>('listing');
+  const [rankingRulesType, setRankingRulesType] = useState<'ranking' | 'filter'>('ranking');
 
 
   // Developer Mode Trigger (URL or Easter Egg)
@@ -349,78 +363,7 @@ const App: React.FC = () => {
   };
 
   const mapRowsToListings = (rows: CsvRow[]): PublicListingPageRequestModel[] => {
-    const listingsMap = new Map<string, PublicListingPageRequestModel>();
-
-    rows.forEach(row => {
-        if (!row.Name) return; // Skip invalid rows
-
-        const name = row.Name.trim();
-        
-        // Get existing or create new listing
-        let listing = listingsMap.get(name);
-        if (!listing) {
-            listing = {
-                name: name,
-                trackingId: config.trackingId,
-                patterns: [],
-                pageRules: []
-            };
-            listingsMap.set(name, listing);
-        }
-
-        // Add URL Patterns (support multiple separated by ;)
-        if (row.UrlPattern) {
-            const urls = row.UrlPattern.split(';').map(u => u.trim()).filter(u => u);
-            urls.forEach(url => {
-                // Avoid duplicates
-                if (!listing!.patterns.find(p => p.url === url)) {
-                    listing!.patterns.push({ url });
-                }
-            });
-        }
-
-        // Add Rule if filter is present
-        if (row.FilterField) {
-            const localeParts = [row.Language, row.Country, row.Currency].filter(Boolean);
-            const localeSuffix = localeParts.length > 0 ? ` [${localeParts.join('-')}]` : '';
-            
-            // Generate unique descriptive name
-            const baseRuleName = `Rule: ${row.FilterField} ${row.FilterOperator || 'is'} ${row.FilterValue}${localeSuffix}`;
-            
-            // Ensure uniqueness within this listing page
-            let ruleName = baseRuleName;
-            let counter = 1;
-            while (listing.pageRules.some(r => r.name === ruleName)) {
-                counter++;
-                ruleName = `${baseRuleName} (${counter})`;
-            }
-
-            const rule: ListingPageApiPageRuleModel = {
-                name: ruleName,
-                filters: [{
-                    fieldName: row.FilterField,
-                    operator: row.FilterOperator || 'isExactly',
-                    value: {
-                        type: 'string',
-                        value: row.FilterValue
-                    }
-                }]
-            };
-
-            // Add Locale if present
-            if (row.Language || row.Country || row.Currency) {
-                rule.locales = [{
-                    language: row.Language || undefined,
-                    country: row.Country || undefined,
-                    currency: row.Currency || undefined
-                }];
-            }
-
-            listing.pageRules.push(rule);
-        }
-    });
-
-    return Array.from(listingsMap.values());
+    return mapRowsToListingsUtil(rows, config.trackingId);
   };
 
   const handleEnhanceWithAI = async (index: number) => {
@@ -532,6 +475,50 @@ const App: React.FC = () => {
       setIsDeleteConfirming(false);
   };
 
+  const handleExportAllListings = async () => {
+      setLoading(true);
+      setStatus({ type: 'info', message: 'Fetching all listings...' });
+      try {
+          const allListings = await fetchAllListings(config);
+          
+          if (allListings.length === 0) {
+              setStatus({ type: 'info', message: 'No listings found to export.' });
+              setLoading(false);
+              return;
+          }
+
+          // Convert listings to CSV rows (with fallback for legacy format)
+          setStatus({ type: 'info', message: 'Converting listings to CSV format...' });
+          const csvRows = await convertListingsToCsv(allListings, config);
+          
+          // Generate CSV string using PapaParse
+          const csv = Papa.unparse(csvRows, {
+              columns: ['Name', 'UrlPattern', 'FilterField', 'FilterValue', 'FilterOperator', 'Language', 'Country', 'Currency']
+          });
+
+          // Generate filename with current date in ISO format (YYYY-MM-DD)
+          const dateStr = new Date().toISOString().split('T')[0];
+          const filename = `listings-export-${dateStr}.csv`;
+
+          // Create download link
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', filename);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          setStatus({ type: 'success', message: `Successfully exported ${allListings.length} listings (${csvRows.length} rows).` });
+      } catch (error: any) {
+          console.error("Export error", error);
+          setStatus({ type: 'error', message: `Export failed: ${error.message}` });
+      }
+      setLoading(false);
+  };
+
   // --- Global Config Handlers ---
 
   const handleFetchGlobal = async () => {
@@ -621,6 +608,143 @@ const App: React.FC = () => {
           setStatus({ type: 'error', message: `Failed to save: ${getErrorMessage(error, 'Unknown error.')}` });
       }
       setLoading(false);
+  };
+
+  // --- Ranking Rules Handlers ---
+  
+  const handleFetchRankingRules = async () => {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const rules = await fetchAllRules(config, rankingRulesSolutionType, rankingRulesType);
+      setRankingRulesData(rules);
+      setRankingRulesJSON(JSON.stringify(rules, null, 2));
+      const ruleTypeLabel = rankingRulesType === 'ranking' ? 'ranking' : 'filter';
+      setStatus({ 
+        type: rules.length > 0 ? 'success' : 'info', 
+        message: rules.length > 0 
+          ? `Fetched ${rules.length} ${rankingRulesSolutionType} ${ruleTypeLabel} rule(s)` 
+          : `No ${rankingRulesSolutionType} ${ruleTypeLabel} rules found`
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setStatus({ type: 'error', message: `Failed to fetch rules: ${errorMessage}` });
+      setRankingRulesData([]);
+      setRankingRulesJSON('');
+    }
+    setLoading(false);
+  };
+
+  const handleExportRankingRules = () => {
+    if (rankingRulesData.length === 0) {
+      setStatus({ type: 'error', message: 'No rules to export. Fetch rules first.' });
+      return;
+    }
+    downloadRankingRulesJSON(rankingRulesData, rankingRulesType, rankingRulesSolutionType);
+    setStatus({ type: 'success', message: 'Rules exported successfully' });
+  };
+
+  const handleImportRankingRulesFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setRankingRulesJSON(content);
+      
+      const validation = parseRankingRulesJSON(content);
+      if (validation.valid && validation.data) {
+        setRankingRulesData(validation.data);
+        setStatus({ 
+          type: 'success', 
+          message: `File loaded successfully. Found ${validation.data.length} rule(s). Rules will be imported to trackingId: ${config.trackingId}` 
+        });
+      } else {
+        setStatus({ type: 'error', message: `Invalid file: ${validation.error}` });
+        setRankingRulesData([]);
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset the input value so the same file can be selected again
+    event.target.value = '';
+  };
+
+  const handleImportRankingRules = async () => {
+    if (rankingRulesData.length === 0) {
+      setStatus({ type: 'error', message: 'No valid rules to import' });
+      return;
+    }
+    
+    setLoading(true);
+    setStatus({ type: 'info', message: 'Importing rules...' });
+    
+    try {
+      // Transform rules to the Hub UI format expected by the API
+      // The API expects: { rule: {...}, solutionType, schedule, ruleTargets, isGlobal }
+      const rulesToCreate = rankingRulesData.map(item => {
+        // Check if already in Hub UI format (has 'rule' property)
+        if ('rule' in item && item.rule && typeof item.rule === 'object') {
+          // Already in Hub UI format, just override trackingId and solutionType
+          const hubItem = item as any;
+          const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = hubItem.rule;
+          return {
+            rule: {
+              ...ruleData,
+              trackingId: config.trackingId  // Override with config trackingId
+            },
+            solutionType: rankingRulesSolutionType,
+            schedule: hubItem.schedule || null,
+            ruleTargets: hubItem.ruleTargets || null,
+            isGlobal: hubItem.isGlobal !== undefined ? hubItem.isGlobal : true
+          };
+        } else {
+          // Flat format, need to wrap it
+          const { id, createdBy, createdAt, updatedAt, updatedBy, ...ruleData } = item as any;
+          return {
+            rule: {
+              ...ruleData,
+              trackingId: config.trackingId  // Override with config trackingId
+            },
+            solutionType: rankingRulesSolutionType,
+            schedule: null,
+            ruleTargets: null,
+            isGlobal: true
+          };
+        }
+      });
+      
+      const result = await bulkCreateRankingRules(config, rulesToCreate, rankingRulesSolutionType);
+      
+      if (result.errors.length === 0) {
+        setStatus({ 
+          type: 'success', 
+          message: `Successfully imported ${result.success.length} rule(s). Click "Fetch Rules" to see the imported rules.` 
+        });
+      } else if (result.success.length > 0) {
+        setStatus({ 
+          type: 'info', 
+          message: `Imported ${result.success.length} rule(s) successfully. ${result.errors.length} rule(s) failed. Check console for details.` 
+        });
+        console.error('Failed rules:', result.errors);
+      } else {
+        setStatus({ 
+          type: 'error', 
+          message: `Failed to import all rules. Check console for details.` 
+        });
+        console.error('Failed rules:', result.errors);
+      }
+      
+      // Clear the imported data so user can import another file
+      setRankingRulesData([]);
+      setRankingRulesJSON('');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setStatus({ type: 'error', message: `Import failed: ${errorMessage}` });
+    }
+    
+    setLoading(false);
   };
 
   // --- Renderers ---
@@ -1026,7 +1150,7 @@ const App: React.FC = () => {
           </label>
           <p className="mt-2 text-gray-500">or drag and drop your file here</p>
         </div>
-        <p className="text-xs text-gray-400 mt-6 font-mono bg-gray-50 inline-block px-2 py-1 rounded">Required: Name, UrlPattern, FilterField, FilterValue</p>
+        <p className="text-xs text-gray-400 mt-6 font-mono bg-gray-50 inline-block px-2 py-1 rounded">Supported Columns: Name, UrlPattern, FilterField, FilterValue, FilterOperator, Language, Country, Currency</p>
       </div>
       
       <div className="text-left bg-gradient-to-r from-blue-50 to-white p-6 rounded-xl border border-blue-100 shadow-sm">
@@ -1034,17 +1158,18 @@ const App: React.FC = () => {
             <FileText className="w-5 h-5 mr-2" /> Example CSV Structure
         </h4>
         <pre className="text-xs text-slate-700 overflow-x-auto p-4 bg-white rounded-lg border border-slate-200 font-mono leading-relaxed shadow-inner">
-          Name,UrlPattern,FilterField,FilterValue,Language<br/>
-          "Summer Sale","https://site.com/summer",ec_category,Summer,en<br/>
-          "Summer Sale","https://site.com/ete",ec_category,Ete,fr<br/>
-          "Summer Sale","https://site.com/summer-promo",,,en
+          Name,UrlPattern,FilterField,FilterValue,FilterOperator,Language,Country,Currency<br/>
+          "Summer Sale","https://site.com/summer",ec_category,Summer,isExactly,en,,<br/>
+          "Summer Sale","https://site.com/ete",ec_category,Ete,isExactly,fr,CA,CAD<br/>
+          "Multi-Value","https://site.com/products",ec_productid,1001;1002;1003,isExactly,en,US,USD
         </pre>
         <div className="text-sm text-slate-600 mt-4 space-y-2 pl-2 border-l-4 border-coveo-blue/30">
             <p className="font-medium">Notes:</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
                 <li>Rows with the same <strong>Name</strong> are merged into a single Listing Configuration.</li>
                 <li>Use multiple rows to define <strong>arrays of URL patterns</strong> or <strong>locale-specific rules</strong>.</li>
-                <li>You can also separate multiple URLs in a single cell using semicolons (;).</li>
+                <li>Separate multiple URLs or filter values in a single cell using <strong>semicolons (;)</strong>.</li>
+                <li><strong>FilterOperator</strong> defaults to "isExactly" if not specified. Supported: isExactly, contains, isBetween, isGreaterThan, isLessThan.</li>
             </ul>
         </div>
       </div>
@@ -1100,7 +1225,10 @@ const App: React.FC = () => {
                                     {rule.name}
                                 </div>
                                 <div className="mt-1.5 text-gray-600 font-mono bg-gray-50/50 p-1 rounded">
-                                    {rule.filters.map(f => `${f.fieldName} ${f.operator} "${f.value.value}"`).join(', ')}
+                                    {rule.filters.map(f => {
+                                        const displayValue = f.value.values ? f.value.values.join(';') : f.value.value;
+                                        return `${f.fieldName} ${f.operator} "${displayValue}"`;
+                                    }).join(', ')}
                                 </div>
                                 {rule.locales && rule.locales.length > 0 && (
                                     <div className="mt-2 pt-1 border-t border-gray-100 flex items-center text-gray-400 text-[10px] uppercase tracking-wide">
@@ -1208,6 +1336,45 @@ const App: React.FC = () => {
 
   const renderMaintenance = () => (
       <div className="max-w-3xl mx-auto space-y-8 py-12">
+          <div className="bg-white border border-blue-100 rounded-xl p-8 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-start">
+                  <div className="flex-shrink-0 bg-blue-100 p-3 rounded-full">
+                      <Download className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="ml-6 flex-1">
+                      <h3 className="text-xl font-bold text-gray-900">Export All Listings to CSV</h3>
+                      <div className="mt-3 text-sm text-gray-600 leading-relaxed">
+                          <p>
+                              Download all listing pages associated with the tracking ID 
+                              <span className="font-mono bg-gray-100 px-2 py-0.5 mx-1 rounded text-blue-600 font-bold border border-gray-200">{config.trackingId}</span>
+                              as a CSV file.
+                          </p>
+                          <p className="mt-2">
+                              The exported file can be edited in Excel or Google Sheets and re-imported using the Import Wizard.
+                          </p>
+                      </div>
+                      <div className="mt-8">
+                          <button
+                              onClick={handleExportAllListings}
+                              disabled={!isConfigValid || loading}
+                              className="inline-flex items-center px-6 py-3 border border-blue-200 text-sm font-bold rounded-lg shadow-sm text-white bg-coveo-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                              {loading ? (
+                                  <>
+                                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                                      Exporting...
+                                  </>
+                              ) : (
+                                  <>
+                                      <Download className="w-5 h-5 mr-2" />
+                                      Export All Listings to CSV
+                                  </>
+                              )}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
           <div className="bg-white border border-red-100 rounded-xl p-8 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-start">
                   <div className="flex-shrink-0 bg-red-100 p-3 rounded-full">
@@ -1262,6 +1429,7 @@ const App: React.FC = () => {
   const navItems = [
       { id: 'wizard', label: 'Import Wizard', icon: LayoutList },
       { id: 'global-config', label: 'Global Config', icon: Code },
+      { id: 'ranking-rules', label: 'Rules', icon: Sparkles },
       { id: 'maintenance', label: 'Maintenance', icon: Settings }
   ];
 
@@ -1468,6 +1636,209 @@ const App: React.FC = () => {
                     <h2 className="text-2xl font-bold text-coveo-dark">Global Configuration Manager</h2>
                 </div>
                 {renderGlobalConfig()}
+            </div>
+        )}
+
+        {view === 'ranking-rules' && (
+            <div className="bg-white shadow-xl shadow-gray-100 rounded-2xl p-8 border border-gray-100">
+                <div className="flex items-center mb-8">
+                    <div className="p-2 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg mr-4">
+                        <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-coveo-dark">Rules Manager</h2>
+                        <p className="text-sm text-gray-600 mt-1">Export and import ranking & filter rules for search and listing pages</p>
+                    </div>
+                </div>
+
+                {/* Export Section */}
+                <div className="mb-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Download className="w-5 h-5" />
+                        Export Rules
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Fetch and export ranking or filter rules as JSON for backup and portability.
+                    </p>
+                    
+                    {/* Rule Type Selector */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Rule Type
+                        </label>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setRankingRulesType('ranking')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesType === 'ranking'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Ranking Rules
+                            </button>
+                            <button
+                                onClick={() => setRankingRulesType('filter')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesType === 'filter'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Filter Rules
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* Solution Type Selector */}
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Solution Type
+                        </label>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setRankingRulesSolutionType('listing')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesSolutionType === 'listing'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Listing
+                            </button>
+                            <button
+                                onClick={() => setRankingRulesSolutionType('search')}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                    rankingRulesSolutionType === 'search'
+                                        ? 'bg-coveo-blue text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                Search
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleFetchRankingRules}
+                            disabled={loading || !config.organizationId || !config.accessToken}
+                            className="px-4 py-2 bg-coveo-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            Fetch Rules
+                        </button>
+                        <button
+                            onClick={handleExportRankingRules}
+                            disabled={rankingRulesData.length === 0}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            <Download className="w-4 h-4" />
+                            Download JSON
+                        </button>
+                    </div>
+                </div>
+
+                {/* Preview Section */}
+                {rankingRulesData.length > 0 && (
+                    <div className="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h4 className="font-semibold text-gray-900 mb-2">Preview</h4>
+                        <div className="text-sm text-gray-700 space-y-2">
+                            <p><strong>Total ranking rules:</strong> {rankingRulesData.length}</p>
+                            <div className="mt-2 space-y-1">
+                                <p><strong>By action:</strong></p>
+                                <ul className="ml-4 space-y-1">
+                                    <li>Boost: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'boost').length}</li>
+                                    <li>Bury: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'bury').length}</li>
+                                    <li>Pin: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'pin').length}</li>
+                                    <li>Reserved Position: {rankingRulesData.filter(item => ((item as any).rule || item).action === 'reservedPosition').length}</li>
+                                </ul>
+                            </div>
+                            <details className="mt-2">
+                                <summary className="cursor-pointer text-coveo-blue hover:underline">
+                                    View rule details
+                                </summary>
+                                <div className="mt-2 max-h-96 overflow-y-auto">
+                                    {rankingRulesData.map((item, idx) => {
+                                        // Handle both flat and Hub UI format
+                                        const rule = (item as any).rule || item;
+                                        return (
+                                            <div key={idx} className="mb-4 p-3 bg-white rounded border border-gray-200">
+                                                <p className="font-medium">{rule.name}</p>
+                                                <p className="text-xs text-gray-500">ID: {rule.id || 'N/A'}</p>
+                                                <p className="text-sm mt-1">
+                                                    <span className="font-semibold">Action:</span> {rule.action} | 
+                                                    <span className="font-semibold"> Status:</span> {rule.enabled !== undefined ? (rule.enabled ? 'Enabled' : 'Disabled') : 'Enabled'}
+                                                </p>
+                                                {((rule.conditions && rule.conditions.length > 0) || (rule.filters && rule.filters.length > 0)) && (
+                                                    <p className="text-xs text-gray-600 mt-1">{(rule.conditions || rule.filters).length} condition(s)</p>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                )}
+
+                {/* Import Section */}
+                <div className="border-t border-gray-200 pt-8">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Upload className="w-5 h-5" />
+                        Import Rules
+                    </h3>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-start gap-2">
+                            <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-blue-800">
+                                <p className="font-semibold mb-1">Full Import Support</p>
+                                <p>Upload a JSON file with ranking or filter rules to import them into your Coveo organization. 
+                                Rules will be validated and created via the private API.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Upload a JSON file containing ranking or filter rules to validate and import.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <label className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 cursor-pointer flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            Select JSON File
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleImportRankingRulesFile}
+                                className="hidden"
+                            />
+                        </label>
+                    </div>
+                    
+                    {rankingRulesJSON && (
+                        <div className="mt-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                    JSON Preview
+                                </label>
+                                {rankingRulesData.length > 0 && (
+                                    <button
+                                        onClick={handleImportRankingRules}
+                                        disabled={loading}
+                                        className="px-4 py-2 bg-coveo-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                        Import {rankingRulesData.length} Rule(s)
+                                    </button>
+                                )}
+                            </div>
+                            <textarea
+                                value={rankingRulesJSON}
+                                className="w-full h-64 p-3 border border-gray-300 rounded-lg font-mono text-xs bg-gray-50"
+                                readOnly
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
         )}
 

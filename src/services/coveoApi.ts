@@ -1,5 +1,5 @@
 
-import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
+import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel, DetailedListingPageResponseModel, RankingRuleModel } from '../types';
 
 const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
 const MAX_TRACKING_MAPPING_DEPTH = 6;
@@ -224,6 +224,26 @@ export const fetchAllListings = async (config: ConfigState): Promise<PublicListi
   return allItems;
 };
 
+export const fetchListingById = async (config: ConfigState, listingId: string): Promise<DetailedListingPageResponseModel> => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/${listingId}?trackingId=${config.trackingId}`;
+  
+  const response = await fetch(url, {
+      cache: 'no-store',
+      headers: { 
+        'Authorization': `Bearer ${config.accessToken}`,
+        'Accept': 'application/json'
+      }
+  });
+  
+  if (!response.ok) {
+     const errorText = await response.text();
+     throw new Error(`Failed to fetch listing ${listingId}: ${errorText}`);
+  }
+
+  return await response.json();
+};
+
 export const bulkDeleteListings = async (config: ConfigState, ids: string[]) => {
   const baseUrl = getBaseUrl(config);
   const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/bulk-delete`;
@@ -385,4 +405,129 @@ export const updateGlobalRecommendationsConfig = async (config: ConfigState, dat
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
+};
+
+// Ranking Rules Management (Private API)
+export interface RankingRulesResponse {
+  page: number;
+  perPage: number;
+  totalCount: number;
+  items: RankingRuleModel[];
+}
+
+export const fetchAllRules = async (
+  config: ConfigState, 
+  solutionType: 'listing' | 'search',
+  ruleType: 'ranking' | 'filter'
+): Promise<RankingRuleModel[]> => {
+  const baseUrl = getBaseUrl(config);
+  
+  // Define actions based on rule type
+  const actions = ruleType === 'ranking' 
+    ? ['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent']
+    : ['include', 'exclude', 'onlyShow'];
+    
+  let page = 0;
+  const perPage = 100;
+  let allRules: RankingRuleModel[] = [];
+  let hasMore = true;
+
+  while (hasMore) {
+    const actionsParam = actions.map(a => `actions=${a}`).join('&');
+    const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?trackingId=${config.trackingId}&solutionType=${solutionType}&page=${page}&perPage=${perPage}&${actionsParam}`;
+    
+    try {
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: { 
+          'Authorization': `Bearer ${config.accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch ${ruleType} rules (page ${page}): ${errorText}`);
+      }
+
+      const data: RankingRulesResponse = await response.json();
+      
+      if (!data.items || data.items.length === 0) {
+        hasMore = false;
+      } else {
+        allRules = [...allRules, ...data.items];
+        // Check if we have more pages
+        hasMore = (page + 1) * perPage < data.totalCount;
+        page++;
+      }
+    } catch (error) {
+      console.error(`Failed to fetch ${ruleType} rules on page ${page}:`, error);
+      throw error;
+    }
+  }
+
+  return allRules;
+};
+
+// Legacy function for backward compatibility
+export const fetchAllRankingRules = async (
+  config: ConfigState, 
+  solutionType: 'listing' | 'search'
+): Promise<RankingRuleModel[]> => {
+  return fetchAllRules(config, solutionType, 'ranking');
+};
+
+export const createRankingRule = async (
+  config: ConfigState,
+  rulePayload: any, // Now accepts the full Hub UI format payload
+  solutionType: 'listing' | 'search'
+): Promise<any> => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules`;
+  
+  // The payload should already be in the correct format: { rule: {...}, solutionType, schedule, ruleTargets, isGlobal }
+  // Ensure solutionType is set correctly
+  const payload = {
+    ...rulePayload,
+    solutionType: solutionType
+  };
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${config.accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to create ranking rule: ${errorText}`);
+  }
+
+  return await response.json();
+};
+
+export const bulkCreateRankingRules = async (
+  config: ConfigState,
+  rules: any[], // Now accepts full Hub UI format payloads
+  solutionType: 'listing' | 'search'
+): Promise<{ success: any[], errors: Array<{ rule: string, error: string }> }> => {
+  const success: any[] = [];
+  const errors: Array<{ rule: string, error: string }> = [];
+
+  for (const rulePayload of rules) {
+    try {
+      const created = await createRankingRule(config, rulePayload, solutionType);
+      success.push(created);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const ruleName = rulePayload.rule?.name || rulePayload.name || 'Unknown rule';
+      errors.push({ rule: ruleName, error: errorMessage });
+    }
+  }
+
+  return { success, errors };
 };
