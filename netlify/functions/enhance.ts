@@ -45,8 +45,9 @@ export default async (request: Request) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("AI Handler Error:", error);
-    return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }

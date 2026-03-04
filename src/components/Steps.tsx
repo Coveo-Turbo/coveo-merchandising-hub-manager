@@ -7,7 +7,7 @@ interface StepsProps {
 }
 
 const steps = [
-  { id: 1, name: 'Configuration' },
+  { id: 1, name: 'Connection' },
   { id: 2, name: 'Upload & Parse' },
   { id: 3, name: 'Preview & AI' },
   { id: 4, name: 'Submit' },

@@ -2,6 +2,90 @@
 import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel } from '../types';
 
 const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
+const MAX_TRACKING_MAPPING_DEPTH = 6;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+const extractErrorMessage = (rawBody: string) => {
+  try {
+    const parsed = JSON.parse(rawBody) as {message?: string; type?: string};
+    if (parsed.message && parsed.type) {
+      return `${parsed.type}: ${parsed.message}`;
+    }
+    if (parsed.message) {
+      return parsed.message;
+    }
+  } catch {
+    // keep original error text when payload is not JSON
+  }
+  return rawBody || 'Unknown error';
+};
+
+const collectTrackingIds = (payload: unknown, trackingIds: Set<string>, depth = 0) => {
+  if (depth > MAX_TRACKING_MAPPING_DEPTH || payload === null || payload === undefined) {
+    return;
+  }
+
+  if (Array.isArray(payload)) {
+    payload.forEach((entry) => collectTrackingIds(entry, trackingIds, depth + 1));
+    return;
+  }
+
+  if (!isRecord(payload)) {
+    return;
+  }
+
+  const directTrackingIdCandidates = [payload.trackingId, payload.trackingID];
+  for (const candidate of directTrackingIdCandidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      trackingIds.add(candidate.trim());
+    }
+  }
+
+  Object.values(payload).forEach((value) => {
+    if (Array.isArray(value) || isRecord(value)) {
+      collectTrackingIds(value, trackingIds, depth + 1);
+    }
+  });
+};
+
+export const fetchTrackingIdsFromCatalogMappings = async (config: ConfigState): Promise<string[]> => {
+  const baseUrl = getBaseUrl(config);
+  const url = `${baseUrl}/rest/organizations/${config.organizationId}/trackingidcatalogmappings`;
+
+  const response = await fetch(url, {
+    cache: 'no-store',
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    const errorMessage = extractErrorMessage(errorBody);
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `Authentication failed for tracking ID mappings (${response.status}). Validate token privileges and region. ${errorMessage}`
+      );
+    }
+
+    if (response.status === 404) {
+      throw new Error(
+        `Tracking ID mappings endpoint is unavailable (${response.status}) for this organization/region. ${errorMessage}`
+      );
+    }
+
+    throw new Error(`Failed to load tracking ID mappings (${response.status}). ${errorMessage}`);
+  }
+
+  const payload = await response.json();
+  const trackingIds = new Set<string>();
+  collectTrackingIds(payload, trackingIds);
+
+  return [...trackingIds].sort((a, b) => a.localeCompare(b));
+};
 
 export const bulkCreateListings = async (
   config: ConfigState,
@@ -38,7 +122,7 @@ export const bulkCreateListings = async (
         try {
             const errorJson = JSON.parse(errorText);
             if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-        } catch (e) {
+        } catch {
             errorMessage += `: ${errorText}`;
         }
         throw new Error(errorMessage);
@@ -89,8 +173,7 @@ export const bulkUpdateListings = async (
         try {
             const errorJson = JSON.parse(errorText);
             if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (e) {
+        } catch {
             errorMessage += `: ${errorText}`;
         }
         throw new Error(errorMessage);
