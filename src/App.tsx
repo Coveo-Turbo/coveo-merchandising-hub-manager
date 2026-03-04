@@ -7,7 +7,7 @@ import type {
     ConnectionStatus,
     CsvRow,
     PublicListingPageRequestModel,
-    ListingPageApiPageRuleModel
+    RuleImportModel
 } from './types';
 import { 
     bulkCreateListings, 
@@ -38,7 +38,7 @@ import {
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, LogOut
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, LogOut, Download
 } from 'lucide-react';
 import Papa from 'papaparse';
 
@@ -1356,7 +1356,7 @@ const App: React.FC = () => {
                       <div className="mt-8">
                           <button
                               onClick={handleExportAllListings}
-                              disabled={!isConfigValid || loading}
+                              disabled={!isSessionReady || loading}
                               className="inline-flex items-center px-6 py-3 border border-blue-200 text-sm font-bold rounded-lg shadow-sm text-white bg-coveo-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
                               {loading ? (
