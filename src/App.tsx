@@ -1,11 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { Steps } from './components/Steps';
-import type { ConfigState, CsvRow, PublicListingPageRequestModel, RuleImportModel } from './types';
+import type {
+    ConfigState,
+    ConnectionSessionSnapshot,
+    ConnectionStatus,
+    CsvRow,
+    PublicListingPageRequestModel,
+    RuleImportModel
+} from './types';
 import { 
     bulkCreateListings, 
     bulkUpdateListings,
     fetchAllListings, 
+    fetchTrackingIdsFromCatalogMappings,
     bulkDeleteListings, 
     getGlobalSearchConfig, 
     updateGlobalSearchConfig, 
@@ -30,7 +38,7 @@ import {
 import { 
     Upload, FileText, Settings, Sparkles, AlertCircle, CheckCircle, 
     ArrowRight, Globe, Trash2, Save, RefreshCw, Code, LayoutList,
-    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, Download
+    Menu, X, Bug, Plus, Trash, Link as LinkIcon, Copy, ClipboardPaste, Languages, LogOut, Download
 } from 'lucide-react';
 import Papa from 'papaparse';
 
@@ -40,8 +48,49 @@ type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendati
 interface SharedSettings {
     perPage?: number;
     additionalFields?: string[];
-    sorts?: unknown[];
+    sorts?: SortDefinition[];
 }
+
+interface SortDisplayName {
+    language: string;
+    value: string;
+}
+
+interface SortFieldDefinition {
+    field?: string;
+    direction?: string;
+    displayNames?: SortDisplayName[];
+}
+
+interface SortDefinition {
+    sortCriteria?: string;
+    fields?: SortFieldDefinition[];
+}
+
+interface QueryConfigData {
+    perPage?: number;
+    additionalFields?: string[];
+    sorts?: SortDefinition[];
+    [key: string]: unknown;
+}
+
+interface GlobalConfigDataShape extends QueryConfigData {
+    id?: unknown;
+    queryConfiguration?: QueryConfigData;
+    rules?: unknown;
+}
+
+const getErrorMessage = (error: unknown, fallback = 'Unknown error') =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+const DEFAULT_CONFIG: ConfigState = {
+  organizationId: '',
+  trackingId: '',
+  accessToken: '',
+  platformUrl: 'https://platform.cloud.coveo.com',
+};
+
+const SESSION_STORAGE_KEY = 'cmh-manager.connection-session.v1';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('wizard');
@@ -52,19 +101,16 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [devMode, setDevMode] = useState(false);
   const [clickCount, setClickCount] = useState(0);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [availableTrackingIds, setAvailableTrackingIds] = useState<string[]>([]);
 
-  const [config, setConfig] = useState<ConfigState>({
-    organizationId: '',
-    trackingId: '',
-    accessToken: '',
-    platformUrl: 'https://platform.cloud.coveo.com' // Default to US
-  });
+  const [config, setConfig] = useState<ConfigState>(DEFAULT_CONFIG);
 
   const [parsedListings, setParsedListings] = useState<PublicListingPageRequestModel[]>([]);
   
   // Global Config State
   const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
-  const [globalConfigData, setGlobalConfigData] = useState<any>(null);
+  const [globalConfigData, setGlobalConfigData] = useState<GlobalConfigDataShape | null>(null);
   const [globalConfigString, setGlobalConfigString] = useState<string>('');
   
   // Shared Settings Clipboard
@@ -90,6 +136,66 @@ const App: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    const rawSnapshot = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!rawSnapshot) {
+      return;
+    }
+
+    try {
+      const snapshot = JSON.parse(rawSnapshot) as Partial<ConnectionSessionSnapshot>;
+      const trackingIds = Array.isArray(snapshot.trackingIds)
+        ? snapshot.trackingIds.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        : [];
+      const selectedTrackingId =
+        typeof snapshot.selectedTrackingId === 'string' ? snapshot.selectedTrackingId.trim() : '';
+      const organizationId = typeof snapshot.organizationId === 'string' ? snapshot.organizationId.trim() : '';
+      const accessToken = typeof snapshot.accessToken === 'string' ? snapshot.accessToken.trim() : '';
+      const platformUrl = typeof snapshot.platformUrl === 'string' ? snapshot.platformUrl.trim() : '';
+
+      if (!organizationId || !accessToken || !platformUrl || !selectedTrackingId || trackingIds.length === 0) {
+        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        return;
+      }
+
+      const uniqueTrackingIds = [...new Set(trackingIds)];
+      const resolvedTrackingId = uniqueTrackingIds.includes(selectedTrackingId) ? selectedTrackingId : uniqueTrackingIds[0];
+
+      setConfig({
+        organizationId,
+        accessToken,
+        platformUrl,
+        trackingId: resolvedTrackingId,
+      });
+      setAvailableTrackingIds(uniqueTrackingIds);
+      setConnectionStatus('connected');
+      setStep(2);
+    } catch {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected') {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
+
+    if (!config.organizationId || !config.accessToken || !config.platformUrl || !config.trackingId || availableTrackingIds.length === 0) {
+      return;
+    }
+
+    const snapshot: ConnectionSessionSnapshot = {
+      organizationId: config.organizationId,
+      accessToken: config.accessToken,
+      platformUrl: config.platformUrl,
+      selectedTrackingId: config.trackingId,
+      trackingIds: availableTrackingIds,
+    };
+
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+  }, [availableTrackingIds, config.accessToken, config.organizationId, config.platformUrl, config.trackingId, connectionStatus]);
+
   const handleVersionClick = () => {
       const newCount = clickCount + 1;
       setClickCount(newCount);
@@ -101,7 +207,26 @@ const App: React.FC = () => {
   };
 
   const handleConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setConfig({ ...config, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    const shouldResetSession = name === 'organizationId' || name === 'platformUrl' || name === 'accessToken';
+
+    setConfig((current) => ({
+      ...current,
+      [name]: value,
+      ...(shouldResetSession ? { trackingId: '' } : {}),
+    }));
+
+    if (shouldResetSession) {
+      setConnectionStatus('disconnected');
+      setAvailableTrackingIds([]);
+      setParsedListings([]);
+      setGlobalConfigData(null);
+      setGlobalConfigString('');
+      setStep(1);
+      setView('wizard');
+      setIsDeleteConfirming(false);
+    }
+
     setStatus(null);
   };
 
@@ -110,15 +235,106 @@ const App: React.FC = () => {
     if (sample) {
         setConfig({
             organizationId: sample.organizationId,
-            trackingId: sample.trackingId,
+            trackingId: '',
             accessToken: sample.accessToken || '',
             platformUrl: sample.platformUrl
         });
+        setConnectionStatus('disconnected');
+        setAvailableTrackingIds([]);
+        setStep(1);
+        setView('wizard');
+        setParsedListings([]);
+        setGlobalConfigData(null);
+        setGlobalConfigString('');
+        setIsDeleteConfirming(false);
         setStatus({ type: 'success', message: `Loaded sample: ${sample.name}` });
     }
   };
 
-  const isConfigValid = config.organizationId && config.trackingId && config.accessToken;
+  const isConnectionInputValid = config.organizationId.trim().length > 0 && config.accessToken.trim().length > 0;
+  const isSessionReady =
+    connectionStatus === 'connected' &&
+    config.organizationId.trim().length > 0 &&
+    config.accessToken.trim().length > 0 &&
+    config.trackingId.trim().length > 0;
+
+  const handleConnect = async () => {
+    if (!isConnectionInputValid) {
+      return;
+    }
+
+    setLoading(true);
+    setConnectionStatus('connecting');
+    setStatus(null);
+
+    try {
+      const trackingIds = await fetchTrackingIdsFromCatalogMappings(config);
+
+      if (trackingIds.length === 0) {
+        throw new Error('No tracking ID was returned by /trackingidcatalogmappings for this organization.');
+      }
+
+      const selectedTrackingId = trackingIds[0];
+      setAvailableTrackingIds(trackingIds);
+      setConfig((current) => ({...current, trackingId: selectedTrackingId}));
+      setConnectionStatus('connected');
+      setStep(2);
+      setView('wizard');
+      setStatus({
+        type: 'success',
+        message: `Connected successfully. Loaded ${trackingIds.length} tracking ID${trackingIds.length > 1 ? 's' : ''}.`,
+      });
+    } catch (error: unknown) {
+      setConnectionStatus('disconnected');
+      setAvailableTrackingIds([]);
+      setConfig((current) => ({...current, trackingId: ''}));
+
+      const message = error instanceof Error ? error.message : 'Unable to fetch tracking IDs from catalog mappings.';
+      setStatus({type: 'error', message});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTrackingIdChange = (newTrackingId: string) => {
+    if (newTrackingId === config.trackingId) {
+      return;
+    }
+
+    const hasUnsavedWizardData = parsedListings.length > 0 || step > 2;
+    if (hasUnsavedWizardData) {
+      const confirmed = window.confirm(
+        'Switching tracking ID will clear parsed listings and reset the wizard to Upload step. Continue?'
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setParsedListings([]);
+      setGlobalConfigData(null);
+      setGlobalConfigString('');
+      setIsDeleteConfirming(false);
+      setStep(2);
+    }
+
+    setConfig((current) => ({...current, trackingId: newTrackingId}));
+    setStatus({type: 'info', message: `Tracking ID switched to "${newTrackingId}".`});
+  };
+
+  const handleDisconnect = () => {
+    setConnectionStatus('disconnected');
+    setAvailableTrackingIds([]);
+    setConfig(DEFAULT_CONFIG);
+    setParsedListings([]);
+    setGlobalConfigData(null);
+    setGlobalConfigString('');
+    setIsDeleteConfirming(false);
+    setIsMobileMenuOpen(false);
+    setView('wizard');
+    setStep(1);
+    setStatus({type: 'info', message: 'Disconnected. Configure Organization ID, Region, and Access Token to connect again.'});
+  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -134,8 +350,8 @@ const App: React.FC = () => {
             setParsedListings(listings);
             setStatus({ type: 'success', message: `Successfully parsed ${listings.length} unique listings from ${results.data.length} rows.` });
             setStep(3);
-        } catch (e: any) {
-            setStatus({ type: 'error', message: `Parsing error: ${e.message}` });
+        } catch (error: unknown) {
+            setStatus({ type: 'error', message: `Parsing error: ${getErrorMessage(error, 'Unable to parse CSV file.')}` });
         }
         setLoading(false);
       },
@@ -180,7 +396,7 @@ const App: React.FC = () => {
         } else {
             setStatus({ type: 'info', message: 'AI could not generate a confident suggestion.' });
         }
-    } catch (e) {
+    } catch {
         setStatus({ type: 'error', message: 'AI enhancement failed.' });
     }
     setLoading(false);
@@ -228,8 +444,8 @@ const App: React.FC = () => {
       if (toCreate.length > 0 || toUpdate.length > 0) {
           setStep(4); // Move to Done
       }
-    } catch (error: any) {
-      setStatus({ type: 'error', message: error.message });
+    } catch (error: unknown) {
+      setStatus({ type: 'error', message: getErrorMessage(error, 'Failed to push listings to CMH.') });
     }
     setLoading(false);
   };
@@ -251,9 +467,9 @@ const App: React.FC = () => {
           setStatus({ type: 'info', message: `Deleting ${ids.length} listings...` });
           await bulkDeleteListings(config, ids);
           setStatus({ type: 'success', message: `Successfully deleted ${ids.length} listings.` });
-      } catch (error: any) {
+      } catch (error: unknown) {
           console.error("Delete error", error);
-          setStatus({ type: 'error', message: `Deletion failed: ${error.message}` });
+          setStatus({ type: 'error', message: `Deletion failed: ${getErrorMessage(error, 'Unknown deletion error.')}` });
       }
       setLoading(false);
       setIsDeleteConfirming(false);
@@ -330,21 +546,22 @@ const App: React.FC = () => {
           } else if (globalConfigType === 'product-suggest') {
              try {
                 data = await getGlobalProductSuggestConfig(config);
-             } catch (e: any) {
-                if (e.message && e.message.includes('NOT_FOUND')) {
+             } catch (error: unknown) {
+                const errorMessage = getErrorMessage(error, '');
+                if (errorMessage.includes('NOT_FOUND')) {
                     data = {
                         trackingId: config.trackingId,
                         queryConfiguration: { additionalFields: [], perPage: 10 }
                     };
                     setStatus({ type: 'info', message: 'Configuration not found. Loaded default template.' });
                 } else {
-                    throw e;
+                    throw error;
                 }
              }
           } else if (globalConfigType === 'recommendation') {
              try {
                  data = await getGlobalRecommendationsConfig(config);
-             } catch (e: any) {
+             } catch {
                  data = {
                      additionalFields: [],
                      perPage: 5
@@ -355,8 +572,8 @@ const App: React.FC = () => {
           
           setGlobalConfigData(data);
           setGlobalConfigString(JSON.stringify(data, null, 2));
-      } catch (error: any) {
-          setStatus({ type: 'error', message: `Failed to fetch config: ${error.message}` });
+      } catch (error: unknown) {
+          setStatus({ type: 'error', message: `Failed to fetch config: ${getErrorMessage(error, 'Unknown error.')}` });
       }
       setLoading(false);
   };
@@ -374,8 +591,8 @@ const App: React.FC = () => {
           } else if (globalConfigType === 'product-suggest') {
              try {
                 await updateGlobalProductSuggestConfig(config, parsedData);
-             } catch (e: any) {
-                 console.warn("Product Suggest Update failed, attempting creation. Error:", e);
+             } catch (error: unknown) {
+                 console.warn("Product Suggest Update failed, attempting creation. Error:", error);
                  // If update fails, try create. 
                  // Note: Update might fail with 404 (if new) or 400 (if malformed). 
                  // If malformed, Create will likely fail too.
@@ -387,8 +604,8 @@ const App: React.FC = () => {
 
           setStatus({ type: 'success', message: 'Configuration saved successfully.' });
           handleFetchGlobal(); // Refresh
-      } catch (error: any) {
-          setStatus({ type: 'error', message: `Failed to save: ${error.message}` });
+      } catch (error: unknown) {
+          setStatus({ type: 'error', message: `Failed to save: ${getErrorMessage(error, 'Unknown error.')}` });
       }
       setLoading(false);
   };
@@ -536,10 +753,10 @@ const App: React.FC = () => {
     if (!globalConfigData) return null;
 
     // Support nested queryConfiguration or direct object (depending on endpoint)
-    const qc = globalConfigData.queryConfiguration || globalConfigData;
+    const qc: QueryConfigData = globalConfigData.queryConfiguration || globalConfigData;
     
-    const updateField = (key: string, value: any) => {
-        let newData;
+    const updateField = (key: string, value: unknown) => {
+        let newData: GlobalConfigDataShape;
         if (globalConfigData.queryConfiguration) {
             newData = { 
                 ...globalConfigData, 
@@ -566,7 +783,7 @@ const App: React.FC = () => {
     const handlePasteSettings = () => {
         if (!sharedSettings) return;
         
-        let newQc = { ...qc };
+        const newQc: QueryConfigData = { ...qc };
         if (sharedSettings.perPage !== undefined) newQc.perPage = sharedSettings.perPage;
         if (sharedSettings.additionalFields) newQc.additionalFields = sharedSettings.additionalFields;
         
@@ -575,7 +792,7 @@ const App: React.FC = () => {
             newQc.sorts = sharedSettings.sorts;
         }
 
-        let newData;
+        let newData: GlobalConfigDataShape;
         if (globalConfigData.queryConfiguration) {
             newData = { ...globalConfigData, queryConfiguration: newQc };
         } else {
@@ -587,7 +804,7 @@ const App: React.FC = () => {
         setStatus({ type: 'success', message: 'Settings applied from clipboard' });
     };
 
-    const addListString = (listKey: string, value: string) => {
+    const addListString = (listKey: 'additionalFields', value: string) => {
         if (!value) return;
         const currentList = qc[listKey] || [];
         if (!currentList.includes(value)) {
@@ -595,13 +812,13 @@ const App: React.FC = () => {
         }
     };
 
-    const removeListString = (listKey: string, value: string) => {
+    const removeListString = (listKey: 'additionalFields', value: string) => {
         const currentList = qc[listKey] || [];
         updateField(listKey, currentList.filter((item: string) => item !== value));
     };
 
     // Sort Handlers
-    const sorts = qc.sorts || [];
+    const sorts: SortDefinition[] = qc.sorts || [];
     
     const addSort = (criteria: string, field?: string, direction?: string) => {
         const newSort = criteria === 'relevance' 
@@ -611,7 +828,7 @@ const App: React.FC = () => {
                 fields: [{ 
                     field, 
                     direction, 
-                    displayNames: pendingSortLabels.length > 0 ? pendingSortLabels : [{ language: 'en', value: field }]
+                    displayNames: pendingSortLabels.length > 0 ? pendingSortLabels : [{ language: 'en', value: field || '' }]
                 }] 
             };
         updateField('sorts', [...sorts, newSort]);
@@ -663,7 +880,7 @@ const App: React.FC = () => {
                         type="number" 
                         className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-coveo-blue focus:border-coveo-blue transition-all"
                         value={qc.perPage || 0}
-                        onChange={(e) => updateField('perPage', parseInt(e.target.value))}
+                        onChange={(e) => updateField('perPage', parseInt(e.target.value, 10))}
                     />
                 </div>
 
@@ -713,9 +930,9 @@ const App: React.FC = () => {
                     <label className="block text-sm font-semibold text-gray-700 mb-3">Sort Configuration</label>
                     
                     {/* Existing Sorts */}
-                    <div className="space-y-2 mb-4">
-                        {sorts.length === 0 && <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded-md">No sorts configured.</p>}
-                        {sorts.map((sort: any, idx: number) => (
+                        <div className="space-y-2 mb-4">
+                            {sorts.length === 0 && <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded-md">No sorts configured.</p>}
+                        {sorts.map((sort, idx: number) => (
                             <div key={idx} className="flex items-start justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-sm text-sm group hover:border-coveo-blue transition-all">
                                 <div>
                                     {sort.sortCriteria === 'relevance' ? (
@@ -727,7 +944,7 @@ const App: React.FC = () => {
                                                 <span className="uppercase text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{sort.fields?.[0]?.direction}</span>
                                             </div>
                                             <div className="flex flex-wrap gap-1">
-                                                {sort.fields?.[0]?.displayNames?.map((dn: any, dnIdx: number) => (
+                                                {sort.fields?.[0]?.displayNames?.map((dn, dnIdx: number) => (
                                                     <span key={dnIdx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-gray-50 text-gray-600 border border-gray-200">
                                                         <span className="font-bold mr-1">{dn.language}:</span> {dn.value}
                                                     </span>
@@ -846,17 +1063,6 @@ const App: React.FC = () => {
             />
         </div>
         <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Tracking ID</label>
-            <input 
-            type="text" 
-            name="trackingId"
-            value={config.trackingId}
-            onChange={handleConfigChange}
-            className="block w-full rounded-lg border border-gray-300 p-3 shadow-sm focus:border-coveo-blue focus:ring-2 focus:ring-coveo-blue/20 transition-all" 
-            placeholder="e.g. ecommerce-site"
-            />
-        </div>
-        <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Region</label>
             <select
             name="platformUrl"
@@ -882,14 +1088,29 @@ const App: React.FC = () => {
             />
         </div>
       </div>
+
+      {connectionStatus === 'connected' && (
+        <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-sm text-green-800">
+          Connected. Loaded {availableTrackingIds.length} tracking ID{availableTrackingIds.length > 1 ? 's' : ''}. Current tracking ID: <span className="font-mono font-semibold">{config.trackingId}</span>
+        </div>
+      )}
       
       <div className="flex gap-4 pt-4">
         <button 
-          onClick={() => setStep(2)}
-          disabled={!isConfigValid}
+          onClick={handleConnect}
+          disabled={!isConnectionInputValid || connectionStatus === 'connecting'}
           className="flex-1 flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-coveo-orange hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-coveo-orange disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-all transform active:scale-[0.98]"
         >
-          Connect <ArrowRight className="ml-2 h-5 w-5" />
+          {connectionStatus === 'connecting' ? (
+            <>
+              <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            <>
+              Connect <ArrowRight className="ml-2 h-5 w-5" />
+            </>
+          )}
         </button>
         {devMode && (
             SAMPLE_CONFIGS.length > 1 ? (
@@ -1069,7 +1290,7 @@ const App: React.FC = () => {
              </div>
              <button 
                 onClick={handleFetchGlobal}
-                disabled={!isConfigValid || loading}
+                disabled={!isSessionReady || loading}
                 className="flex items-center px-4 py-2 bg-coveo-blue text-white rounded-md text-sm font-medium hover:bg-blue-800 shadow-sm transition-colors disabled:bg-gray-300"
              >
                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -1077,7 +1298,7 @@ const App: React.FC = () => {
              </button>
           </div>
 
-          {!isConfigValid && (
+          {!isSessionReady && (
               <div className="p-4 bg-yellow-50 border border-yellow-100 text-yellow-800 rounded-lg flex items-center shadow-sm">
                   <AlertCircle className="w-5 h-5 mr-3" />
                   Please configure your connection in the Wizard tab first.
@@ -1135,7 +1356,7 @@ const App: React.FC = () => {
                       <div className="mt-8">
                           <button
                               onClick={handleExportAllListings}
-                              disabled={!isConfigValid || loading}
+                              disabled={!isSessionReady || loading}
                               className="inline-flex items-center px-6 py-3 border border-blue-200 text-sm font-bold rounded-lg shadow-sm text-white bg-coveo-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
                               {loading ? (
@@ -1174,7 +1395,7 @@ const App: React.FC = () => {
                           {!isDeleteConfirming ? (
                               <button
                                   onClick={() => setIsDeleteConfirming(true)}
-                                  disabled={!isConfigValid || loading}
+                                  disabled={!isSessionReady || loading}
                                   className="inline-flex items-center px-6 py-3 border border-red-200 text-sm font-bold rounded-lg shadow-sm text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 transition-colors"
                               >
                                   <Trash2 className="w-5 h-5 mr-2" />
@@ -1216,7 +1437,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-coveo-blue/20">
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-4">
                {/* Coveo Logo SVG */}
@@ -1235,22 +1456,56 @@ const App: React.FC = () => {
             </div>
             
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center space-x-1">
-                {navItems.map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => isConfigValid && setView(item.id as AppView)}
-                        className={`flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                            view === item.id 
-                                ? 'text-white bg-coveo-blue shadow-md' 
-                                : 'text-gray-500 hover:text-coveo-blue hover:bg-blue-50'
-                        } ${!isConfigValid ? 'opacity-40 cursor-not-allowed' : ''}`}
-                        disabled={!isConfigValid}
-                    >
-                        <item.icon className="w-4 h-4 mr-2" />
-                        {item.label}
-                    </button>
-                ))}
+            <div className="hidden md:flex items-center gap-3">
+                {isSessionReady && (
+                    <>
+                        <label htmlFor="desktop-tracking-select" className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                            Tracking ID
+                        </label>
+                        <select
+                            id="desktop-tracking-select"
+                            value={config.trackingId}
+                            onChange={(event) => handleTrackingIdChange(event.target.value)}
+                            className="max-w-[220px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-coveo-blue focus:ring-2 focus:ring-coveo-blue/20"
+                        >
+                            {availableTrackingIds.map((trackingId) => (
+                                <option key={trackingId} value={trackingId}>
+                                    {trackingId}
+                                </option>
+                            ))}
+                        </select>
+                    </>
+                )}
+                <button
+                    onClick={handleDisconnect}
+                    disabled={!isSessionReady}
+                    className={`inline-flex items-center rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                        isSessionReady
+                            ? 'border-red-200 text-red-600 hover:bg-red-50'
+                            : 'border-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
+                >
+                    <LogOut className="mr-1.5 h-4 w-4" />
+                    Disconnect
+                </button>
+                <div className="h-6 w-px bg-gray-200" />
+                <div className="flex items-center space-x-1">
+                    {navItems.map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => isSessionReady && setView(item.id as AppView)}
+                            className={`flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                view === item.id 
+                                    ? 'text-white bg-coveo-blue shadow-md' 
+                                    : 'text-gray-500 hover:text-coveo-blue hover:bg-blue-50'
+                            } ${!isSessionReady ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            disabled={!isSessionReady}
+                        >
+                            <item.icon className="w-4 h-4 mr-2" />
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Mobile Menu Button */}
@@ -1269,11 +1524,37 @@ const App: React.FC = () => {
         {isMobileMenuOpen && (
             <div className="md:hidden bg-white border-t border-gray-200 shadow-lg absolute w-full z-50">
                 <div className="px-4 pt-2 pb-4 space-y-1">
+                    {isSessionReady && (
+                        <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                            <label htmlFor="mobile-tracking-select" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                Tracking ID
+                            </label>
+                            <select
+                                id="mobile-tracking-select"
+                                value={config.trackingId}
+                                onChange={(event) => handleTrackingIdChange(event.target.value)}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                            >
+                                {availableTrackingIds.map((trackingId) => (
+                                    <option key={trackingId} value={trackingId}>
+                                        {trackingId}
+                                    </option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={handleDisconnect}
+                                className="inline-flex w-full items-center justify-center rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                            >
+                                <LogOut className="mr-1.5 h-4 w-4" />
+                                Disconnect
+                            </button>
+                        </div>
+                    )}
                     {navItems.map(item => (
                         <button
                             key={item.id}
                             onClick={() => {
-                                if (isConfigValid) {
+                                if (isSessionReady) {
                                     setView(item.id as AppView);
                                     setIsMobileMenuOpen(false);
                                 }
@@ -1282,8 +1563,8 @@ const App: React.FC = () => {
                                 view === item.id 
                                     ? 'text-coveo-blue bg-blue-50 border border-blue-100' 
                                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                            } ${!isConfigValid ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            disabled={!isConfigValid}
+                            } ${!isSessionReady ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={!isSessionReady}
                         >
                              <div className="flex items-center">
                                 <item.icon className="w-5 h-5 mr-3" />
@@ -1320,7 +1601,7 @@ const App: React.FC = () => {
         {view === 'wizard' && (
             <>
                 <div className="mb-10 flex justify-center">
-                   <Steps currentStep={step} onStepClick={(s) => isConfigValid && setStep(s)} />
+                   <Steps currentStep={step} onStepClick={(s) => isSessionReady && setStep(s)} />
                 </div>
 
                 <div className="bg-white shadow-xl shadow-gray-100 rounded-2xl p-8 border border-gray-100 transition-all">

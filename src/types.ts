@@ -6,6 +6,16 @@ export interface ConfigState {
   platformUrl: string;
 }
 
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+
+export interface ConnectionSessionSnapshot {
+  organizationId: string;
+  accessToken: string;
+  platformUrl: string;
+  trackingIds: string[];
+  selectedTrackingId: string;
+}
+
 // Coveo API Models based on provided Swagger
 export interface MatchingConfigurationModel {
   url: string;

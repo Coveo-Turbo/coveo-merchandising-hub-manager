@@ -5,6 +5,8 @@ A specialized web application designed to streamline the management of Coveo Com
 ## Features
 
 ### 1. Import Wizard
+*   **Connection-First Setup:** Connect with Organization ID, Region, and Access Token, then automatically load tracking IDs from `/rest/organizations/{organizationId}/trackingidcatalogmappings`.
+*   **Tracking Selector in Header:** Change tracking ID from the top menu without returning to step 1.
 *   **Bulk Creation/Update:** Upload a CSV file to create or update hundreds of listing pages at once.
 *   **Smart Parsing:** Automatically groups rows by page name, supports multiple URL patterns per page, and handles locale-specific rules.
 *   **Upsert Logic:** Checks for existing listings to prevent duplicates (API 412 errors) by updating existing IDs instead of failing.
@@ -65,12 +67,18 @@ A specialized web application designed to streamline the management of Coveo Com
 
 ## Usage Guide
 
-### Step 1: Configuration
-Enter your Coveo Platform credentials.
+### Step 1: Connection
+Enter your Coveo Platform credentials and connect.
 *   **Region:** Select the platform region (US, CA, EU, AU).
 *   **Organization ID:** The ID of your Coveo organization.
-*   **Tracking ID:** The commerce tracking ID (e.g., `fashion_store`).
 *   **Access Token:** An API key with **Commerce - Merchandising Hub (Edit)** privileges.
+*   **Connect:** The app calls `/trackingidcatalogmappings` and extracts tracking IDs. If no tracking IDs are found, the wizard remains blocked at step 1.
+
+After a successful connection:
+*   Tracking IDs are available in a header dropdown (desktop and mobile).
+*   You can switch tracking IDs quickly from the top menu.
+*   A **Disconnect** action is available in the top menu to clear session and reconnect to another org/token.
+*   Session state (org, region, token, tracking ID) is saved for the current browser session.
 
 > **Developer Mode:** Click the "V1.1" version number in the header 5 times to enable Developer Mode, allowing you to load preset configurations.
 
