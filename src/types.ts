@@ -1,4 +1,3 @@
-
 export interface ConfigState {
   organizationId: string;
   trackingId: string;
@@ -7,16 +6,36 @@ export interface ConfigState {
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+export type SessionSource = 'manual' | 'hub';
 
-export interface ConnectionSessionSnapshot {
-  organizationId: string;
-  accessToken: string;
-  platformUrl: string;
+export interface SessionContext extends ConfigState {
   trackingIds: string[];
+  source: SessionSource;
+  organizationName?: string;
+  propertyName?: string;
+  locale?: string;
+}
+
+export interface ConnectionSessionSnapshot extends SessionContext {
   selectedTrackingId: string;
 }
 
-// Coveo API Models based on provided Swagger
+export interface HubContextSnapshot {
+  organizationId?: string;
+  organizationName?: string;
+  trackingId?: string;
+  trackingIds?: string[];
+  propertyName?: string;
+  locale?: string;
+  accessToken?: string;
+  platformUrl?: string;
+}
+
+export interface EmbeddedAppearance {
+  fontFamily?: string;
+  backgroundColor?: string;
+}
+
 export interface MatchingConfigurationModel {
   url: string;
 }
@@ -27,14 +46,16 @@ export interface RuleLocaleModel {
   currency?: string;
 }
 
+export interface QueryFilterValueModel {
+  type: 'string' | 'decimal' | 'array';
+  value?: string | number;
+  values?: string[];
+}
+
 export interface QueryFilterModel {
   fieldName: string;
   operator: 'isExactly' | 'contains' | 'isBetween' | 'isGreaterThan' | 'isLessThan' | string;
-  value: {
-    type: 'string' | 'decimal' | 'array';
-    value?: string | number;
-    values?: string[];
-  };
+  value: QueryFilterValueModel;
 }
 
 export interface ListingPageApiPageRuleModel {
@@ -51,7 +72,6 @@ export interface PublicListingPageRequestModel {
   pageRules: ListingPageApiPageRuleModel[];
 }
 
-// Legacy listing page format (filter rules structure)
 export interface LegacyFilterRuleModel {
   id: string;
   name: string;
@@ -62,7 +82,6 @@ export interface LegacyFilterRuleModel {
   updatedBy?: string;
 }
 
-// Private API Rule Model (supports both Ranking and Filter rules)
 export interface RuleCondition {
   field: string;
   operator: string;
@@ -76,16 +95,14 @@ export interface RuleDefinition {
   [key: string]: unknown;
 }
 
-export type RuleAction = 
-  // Ranking Rule Actions
-  | 'boost' 
-  | 'bury' 
-  | 'pin' 
-  | 'reservedPosition' 
+export type RuleAction =
+  | 'boost'
+  | 'bury'
+  | 'pin'
+  | 'reservedPosition'
   | 'spotlightContent'
-  // Filter Rule Actions
-  | 'include' 
-  | 'exclude' 
+  | 'include'
+  | 'exclude'
   | 'onlyShow';
 
 export interface RuleModel {
@@ -103,43 +120,43 @@ export interface RuleModel {
   updatedBy?: string;
 }
 
-// Merchandising Hub UI export format
-export interface MerchandisingHubRulePayload {
-  rule: {
-    name: string;
-    description?: string;
-    action: RuleAction;
-    trackingId: string;
-    enabled?: boolean;
+export interface HubRuleFilter {
+  fieldName: string;
+  operator: string;
+  value?: {
     type?: string;
-    filters?: Array<{
-      fieldName: string;
-      operator: string;
-      value?: {
-        type?: string;
-        values?: string[];
-      };
-    }>;
-    value?: number;
-    locales?: any[];
-    rulePrecondition?: any;
-    audienceConditions?: any[];
-    updatedAt?: number;
-    updatedBy?: string;
-    id?: string;
-    createdBy?: string;
-    createdAt?: string;
+    values?: string[];
   };
+}
+
+export interface MerchandisingHubRuleRecord {
+  name: string;
+  description?: string;
+  action: RuleAction;
+  trackingId: string;
+  enabled?: boolean;
+  type?: string;
+  filters?: HubRuleFilter[];
+  value?: number;
+  locales?: unknown[];
+  rulePrecondition?: unknown;
+  audienceConditions?: unknown[];
+  updatedAt?: number;
+  updatedBy?: string;
+  id?: string;
+  createdBy?: string;
+  createdAt?: string;
+}
+
+export interface MerchandisingHubRulePayload {
+  rule: MerchandisingHubRuleRecord;
   solutionType?: 'listing' | 'search';
-  schedule?: any;
-  ruleTargets?: any;
+  schedule?: unknown;
+  ruleTargets?: unknown;
   isGlobal?: boolean;
 }
 
-// Union type for both formats
 export type RuleImportModel = RuleModel | MerchandisingHubRulePayload;
-
-// Legacy type alias for backward compatibility
 export type RankingRuleModel = RuleModel;
 export type RankingRuleCondition = RuleCondition;
 export type RankingRuleDefinition = RuleDefinition;
@@ -185,3 +202,57 @@ export interface CsvRow {
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';
+export type AppSection = 'listings' | 'global-config' | 'rules' | 'maintenance';
+export type ListingStep = 1 | 2 | 3 | 4;
+export type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
+
+export interface SortDisplayName {
+  language: string;
+  value: string;
+}
+
+export interface SortFieldDefinition {
+  field?: string;
+  direction?: string;
+  displayNames?: SortDisplayName[];
+}
+
+export interface SortDefinition {
+  sortCriteria?: string;
+  fields?: SortFieldDefinition[];
+}
+
+export interface SharedSettings {
+  perPage?: number;
+  additionalFields?: string[];
+  sorts?: SortDefinition[];
+}
+
+export type JsonValue = unknown;
+export interface JsonObject {
+  [key: string]: unknown;
+}
+
+export interface QueryConfigData {
+  perPage?: number;
+  additionalFields?: string[];
+  sorts?: SortDefinition[];
+  [key: string]: unknown;
+}
+
+export interface GlobalConfigDataShape extends QueryConfigData {
+  id?: JsonValue;
+  trackingId?: string;
+  queryConfiguration?: QueryConfigData;
+  rules?: JsonValue;
+}
+
+export interface AppStatus {
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
+export interface BulkCreateRulesResult {
+  success: unknown[];
+  errors: Array<{rule: string; error: string}>;
+}

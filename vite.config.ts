@@ -1,28 +1,36 @@
-import { defineConfig, loadEnv } from 'vite';
+import {crx} from '@crxjs/vite-plugin';
 import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite';
+import {readFileSync} from 'fs';
 import path from 'path';
+import manifest from './src/extension/manifest';
 
-// https://vite.dev/config/
+const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {version: string};
+
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, '.', '');
+  const isExtensionBuild = mode === 'extension';
+
   return {
+    base: './',
     server: {
       port: 3000,
       host: '0.0.0.0',
     },
     plugins: [
-      react(), 
-      tailwindcss()
+      react(),
+      ...(isExtensionBuild ? [crx({manifest})] : []),
     ],
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY),
-      'process.env.VITE_TOKEN_TREK': JSON.stringify(env.VITE_TOKEN_TREK)
+    build: {
+      outDir: isExtensionBuild ? 'dist/extension' : 'dist/web',
+      emptyOutDir: true,
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(__dirname, 'src'),
       }
-    }
+    },
+    define: {
+      __APP_VERSION__: JSON.stringify(packageJson.version),
+    },
   }
 })

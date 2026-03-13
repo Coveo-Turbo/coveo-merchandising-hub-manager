@@ -1,10 +1,25 @@
+import type {ApiTransport} from '../core/contracts';
+import {createBrowserApiTransport} from '../core/apiTransport';
+import type {
+  BulkCreateRulesResult,
+  CommercePageModelPublicListingPageResponseModel,
+  DetailedListingPageResponseModel,
+  GlobalConfigDataShape,
+  JsonObject,
+  MerchandisingHubRulePayload,
+  PublicListingPageRequestModel,
+  PublicListingPageResponseModel,
+  RankingRuleModel,
+  SessionContext,
+} from '../types';
 
-import type { ConfigState, PublicListingPageRequestModel, CommercePageModelPublicListingPageResponseModel, PublicListingPageResponseModel, DetailedListingPageResponseModel, RankingRuleModel } from '../types';
-
-const getBaseUrl = (config: ConfigState) => config.platformUrl.replace(/\/$/, '');
 const MAX_TRACKING_MAPPING_DEPTH = 6;
 
+const getBaseUrl = (session: SessionContext) => session.platformUrl.replace(/\/$/, '');
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+const ensureTransport = (transport?: ApiTransport) => transport ?? createBrowserApiTransport();
 
 const extractErrorMessage = (rawBody: string) => {
   try {
@@ -16,9 +31,56 @@ const extractErrorMessage = (rawBody: string) => {
       return parsed.message;
     }
   } catch {
-    // keep original error text when payload is not JSON
+    return rawBody || 'Unknown error';
   }
+
   return rawBody || 'Unknown error';
+};
+
+const requestText = async (
+  session: SessionContext,
+  path: string,
+  init: {
+    transport?: ApiTransport;
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    body?: string;
+    headers?: Record<string, string>;
+    cache?: RequestCache;
+  } = {},
+) => {
+  const transport = ensureTransport(init.transport);
+  const response = await transport.request({
+    url: `${getBaseUrl(session)}${path}`,
+    method: init.method,
+    body: init.body,
+    cache: init.cache,
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`,
+      Accept: 'application/json',
+      ...init.headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(extractErrorMessage(response.body));
+  }
+
+  return response.body;
+};
+
+const requestJson = async <T>(
+  session: SessionContext,
+  path: string,
+  init: {
+    transport?: ApiTransport;
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    body?: string;
+    headers?: Record<string, string>;
+    cache?: RequestCache;
+  } = {},
+): Promise<T> => {
+  const body = await requestText(session, path, init);
+  return body ? (JSON.parse(body) as T) : ({} as T);
 };
 
 const collectTrackingIds = (payload: unknown, trackingIds: Set<string>, depth = 0) => {
@@ -49,365 +111,20 @@ const collectTrackingIds = (payload: unknown, trackingIds: Set<string>, depth = 
   });
 };
 
-export const fetchTrackingIdsFromCatalogMappings = async (config: ConfigState): Promise<string[]> => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/trackingidcatalogmappings`;
-
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: {
-      Authorization: `Bearer ${config.accessToken}`,
-      Accept: 'application/json',
-    },
+const postJson = <T>(
+  session: SessionContext,
+  path: string,
+  body: unknown,
+  transport?: ApiTransport,
+  method: 'POST' | 'PUT' = 'POST',
+) =>
+  requestJson<T>(session, path, {
+    transport,
+    method,
+    body: JSON.stringify(body),
+    headers: {'Content-Type': 'application/json'},
   });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    const errorMessage = extractErrorMessage(errorBody);
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(
-        `Authentication failed for tracking ID mappings (${response.status}). Validate token privileges and region. ${errorMessage}`
-      );
-    }
-
-    if (response.status === 404) {
-      throw new Error(
-        `Tracking ID mappings endpoint is unavailable (${response.status}) for this organization/region. ${errorMessage}`
-      );
-    }
-
-    throw new Error(`Failed to load tracking ID mappings (${response.status}). ${errorMessage}`);
-  }
-
-  const payload = await response.json();
-  const trackingIds = new Set<string>();
-  collectTrackingIds(payload, trackingIds);
-
-  return [...trackingIds].sort((a, b) => a.localeCompare(b));
-};
-
-export const bulkCreateListings = async (
-  config: ConfigState,
-  listings: PublicListingPageRequestModel[]
-) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/bulk-create`;
-  
-  // Chunking to respect API limits (100 items per request max per Swagger)
-  const chunkSize = 50;
-  const chunks = [];
-  
-  for (let i = 0; i < listings.length; i += chunkSize) {
-    chunks.push(listings.slice(i, i + chunkSize));
-  }
-
-  const results = [];
-
-  for (const chunk of chunks) {
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(chunk)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = `API Error ${response.status}`;
-        try {
-            const errorJson = JSON.parse(errorText);
-            if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-        } catch {
-            errorMessage += `: ${errorText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      results.push(data);
-    } catch (error) {
-      console.error("Failed to push chunk", error);
-      throw error;
-    }
-  }
-
-  return results;
-};
-
-export const bulkUpdateListings = async (
-  config: ConfigState,
-  listings: PublicListingPageRequestModel[]
-) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/bulk-update`;
-  
-  const chunkSize = 50;
-  const chunks = [];
-  
-  for (let i = 0; i < listings.length; i += chunkSize) {
-    chunks.push(listings.slice(i, i + chunkSize));
-  }
-
-  const results = [];
-
-  for (const chunk of chunks) {
-    try {
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(chunk)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = `API Error ${response.status}`;
-        try {
-            const errorJson = JSON.parse(errorText);
-            if (errorJson.message) errorMessage += `: ${errorJson.message}`;
-        } catch {
-            errorMessage += `: ${errorText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      results.push(data);
-    } catch (error) {
-      console.error("Failed to update chunk", error);
-      throw error;
-    }
-  }
-
-  return results;
-};
-
-export const fetchAllListings = async (config: ConfigState): Promise<PublicListingPageResponseModel[]> => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages`;
-  let page = 0;
-  let allItems: PublicListingPageResponseModel[] = [];
-  let hasMore = true;
-
-  while (hasMore) {
-      const response = await fetch(`${url}?trackingId=${config.trackingId}&page=${page}&perPage=100`, {
-          cache: 'no-store',
-          headers: { 
-            'Authorization': `Bearer ${config.accessToken}`,
-            'Accept': 'application/json'
-          }
-      });
-      
-      if (!response.ok) {
-         const errorText = await response.text();
-         throw new Error(`Failed to fetch listings: ${errorText}`);
-      }
-
-      const data: CommercePageModelPublicListingPageResponseModel = await response.json();
-      
-      if (!data.items || data.items.length === 0) {
-          hasMore = false;
-      } else {
-          allItems = [...allItems, ...data.items];
-          if (page >= data.totalPages - 1) hasMore = false;
-          page++;
-      }
-  }
-  return allItems;
-};
-
-export const fetchListingById = async (config: ConfigState, listingId: string): Promise<DetailedListingPageResponseModel> => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/${listingId}?trackingId=${config.trackingId}`;
-  
-  const response = await fetch(url, {
-      cache: 'no-store',
-      headers: { 
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Accept': 'application/json'
-      }
-  });
-  
-  if (!response.ok) {
-     const errorText = await response.text();
-     throw new Error(`Failed to fetch listing ${listingId}: ${errorText}`);
-  }
-
-  return await response.json();
-};
-
-export const bulkDeleteListings = async (config: ConfigState, ids: string[]) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/listings/pages/bulk-delete`;
-  const chunkSize = 50; 
-  
-  for (let i = 0; i < ids.length; i += chunkSize) {
-    const chunk = ids.slice(i, i + chunkSize);
-    const response = await fetch(url, {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          'Authorization': `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(chunk)
-    });
-
-    if (!response.ok) {
-        throw new Error(`Failed to delete chunk: ${await response.text()}`);
-    }
-  }
-};
-
-// Global Search Configuration
-export const getGlobalSearchConfig = async (config: ConfigState) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/search/global?trackingId=${config.trackingId}`;
-  const response = await fetch(url, {
-    headers: { 
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Accept': 'application/json' 
-    }
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-export const updateGlobalSearchConfig = async (config: ConfigState, data: unknown) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/search/global`;
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify(data)
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-// Global Listing Configuration
-export const getGlobalListingConfig = async (config: ConfigState) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/listings/global?trackingId=${config.trackingId}`;
-  const response = await fetch(url, {
-    headers: { 
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Accept': 'application/json' 
-    }
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-export const updateGlobalListingConfig = async (config: ConfigState, data: unknown) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/listings/global`;
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify(data)
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-// Global Product Suggest Configuration
-export const getGlobalProductSuggestConfig = async (config: ConfigState) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${config.trackingId}`;
-  const response = await fetch(url, {
-    headers: { 
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Accept': 'application/json' 
-    }
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-export const updateGlobalProductSuggestConfig = async (config: ConfigState, data: unknown) => {
-  const baseUrl = getBaseUrl(config);
-  // Fixed: Add trackingId to query params as required by API for PUT
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${config.trackingId}`;
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify(data)
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-export const createGlobalProductSuggestConfig = async (config: ConfigState, data: unknown) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/configurations/productSuggest`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify(data)
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-
-// Global Recommendations Configuration (Slot Global)
-export const getGlobalRecommendationsConfig = async (config: ConfigState) => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${config.trackingId}`;
-  const response = await fetch(url, {
-    headers: { 
-        'Authorization': `Bearer ${config.accessToken}`,
-        'Accept': 'application/json' 
-    }
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-export const updateGlobalRecommendationsConfig = async (config: ConfigState, data: unknown) => {
-  const baseUrl = getBaseUrl(config);
-  // Fixed: Add trackingId to query params as required by API for PUT
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${config.trackingId}`;
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify(data)
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
-
-// Ranking Rules Management (Private API)
 export interface RankingRulesResponse {
   page: number;
   perPage: number;
@@ -415,119 +132,304 @@ export interface RankingRulesResponse {
   items: RankingRuleModel[];
 }
 
+export const fetchTrackingIdsFromCatalogMappings = async (
+  session: SessionContext,
+  transport?: ApiTransport,
+): Promise<string[]> => {
+  const payload = await requestJson<unknown>(
+    session,
+    `/rest/organizations/${session.organizationId}/trackingidcatalogmappings`,
+    {transport, cache: 'no-store'},
+  );
+
+  const trackingIds = new Set<string>();
+  collectTrackingIds(payload, trackingIds);
+  return [...trackingIds].sort((left, right) => left.localeCompare(right));
+};
+
+const chunkArray = <T>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+export const bulkCreateListings = async (
+  session: SessionContext,
+  listings: PublicListingPageRequestModel[],
+  transport?: ApiTransport,
+) => {
+  const results: unknown[] = [];
+  for (const chunk of chunkArray(listings, 50)) {
+    results.push(
+      await postJson<unknown>(
+        session,
+        `/rest/organizations/${session.organizationId}/commerce/v2/listings/pages/bulk-create`,
+        chunk,
+        transport,
+      ),
+    );
+  }
+  return results;
+};
+
+export const bulkUpdateListings = async (
+  session: SessionContext,
+  listings: PublicListingPageRequestModel[],
+  transport?: ApiTransport,
+) => {
+  const results: unknown[] = [];
+  for (const chunk of chunkArray(listings, 50)) {
+    results.push(
+      await postJson<unknown>(
+        session,
+        `/rest/organizations/${session.organizationId}/commerce/v2/listings/pages/bulk-update`,
+        chunk,
+        transport,
+        'PUT',
+      ),
+    );
+  }
+  return results;
+};
+
+export const fetchAllListings = async (
+  session: SessionContext,
+  transport?: ApiTransport,
+): Promise<PublicListingPageResponseModel[]> => {
+  let page = 0;
+  let hasMore = true;
+  const items: PublicListingPageResponseModel[] = [];
+
+  while (hasMore) {
+    const response = await requestJson<CommercePageModelPublicListingPageResponseModel>(
+      session,
+      `/rest/organizations/${session.organizationId}/commerce/v2/listings/pages?trackingId=${encodeURIComponent(
+        session.trackingId,
+      )}&page=${page}&perPage=100`,
+      {transport, cache: 'no-store'},
+    );
+
+    if (!response.items || response.items.length === 0) {
+      hasMore = false;
+    } else {
+      items.push(...response.items);
+      hasMore = page < response.totalPages - 1;
+      page += 1;
+    }
+  }
+
+  return items;
+};
+
+export const fetchListingById = async (
+  session: SessionContext,
+  listingId: string,
+  transport?: ApiTransport,
+): Promise<DetailedListingPageResponseModel> =>
+  requestJson<DetailedListingPageResponseModel>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/listings/pages/${listingId}?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    {transport, cache: 'no-store'},
+  );
+
+export const bulkDeleteListings = async (session: SessionContext, ids: string[], transport?: ApiTransport) => {
+  for (const chunk of chunkArray(ids, 50)) {
+    await postJson<unknown>(
+      session,
+      `/rest/organizations/${session.organizationId}/commerce/v2/listings/pages/bulk-delete`,
+      chunk,
+      transport,
+    );
+  }
+};
+
+export const getGlobalSearchConfig = async (session: SessionContext, transport?: ApiTransport) =>
+  requestJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/search/global?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    {transport},
+  );
+
+export const updateGlobalSearchConfig = async (
+  session: SessionContext,
+  data: JsonObject,
+  transport?: ApiTransport,
+) =>
+  postJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/search/global`,
+    data,
+    transport,
+    'PUT',
+  );
+
+export const getGlobalListingConfig = async (session: SessionContext, transport?: ApiTransport) =>
+  requestJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/listings/global?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    {transport},
+  );
+
+export const updateGlobalListingConfig = async (
+  session: SessionContext,
+  data: JsonObject,
+  transport?: ApiTransport,
+) =>
+  postJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/listings/global`,
+    data,
+    transport,
+    'PUT',
+  );
+
+export const getGlobalProductSuggestConfig = async (session: SessionContext, transport?: ApiTransport) =>
+  requestJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    {transport},
+  );
+
+export const updateGlobalProductSuggestConfig = async (
+  session: SessionContext,
+  data: JsonObject,
+  transport?: ApiTransport,
+) =>
+  postJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/productSuggest?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    data,
+    transport,
+    'PUT',
+  );
+
+export const createGlobalProductSuggestConfig = async (
+  session: SessionContext,
+  data: JsonObject,
+  transport?: ApiTransport,
+) =>
+  postJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/productSuggest`,
+    data,
+    transport,
+  );
+
+export const getGlobalRecommendationsConfig = async (session: SessionContext, transport?: ApiTransport) =>
+  requestJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    {transport},
+  );
+
+export const updateGlobalRecommendationsConfig = async (
+  session: SessionContext,
+  data: JsonObject,
+  transport?: ApiTransport,
+) =>
+  postJson<GlobalConfigDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    data,
+    transport,
+    'PUT',
+  );
+
 export const fetchAllRules = async (
-  config: ConfigState, 
+  session: SessionContext,
   solutionType: 'listing' | 'search',
-  ruleType: 'ranking' | 'filter'
+  ruleType: 'ranking' | 'filter',
+  transport?: ApiTransport,
 ): Promise<RankingRuleModel[]> => {
-  const baseUrl = getBaseUrl(config);
-  
-  // Define actions based on rule type
-  const actions = ruleType === 'ranking' 
-    ? ['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent']
-    : ['include', 'exclude', 'onlyShow'];
-    
+  const actions =
+    ruleType === 'ranking'
+      ? ['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent']
+      : ['include', 'exclude', 'onlyShow'];
+  const actionQuery = actions.map((action) => `actions=${encodeURIComponent(action)}`).join('&');
   let page = 0;
   const perPage = 100;
-  let allRules: RankingRuleModel[] = [];
+  const items: RankingRuleModel[] = [];
   let hasMore = true;
 
   while (hasMore) {
-    const actionsParam = actions.map(a => `actions=${a}`).join('&');
-    const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules?trackingId=${config.trackingId}&solutionType=${solutionType}&page=${page}&perPage=${perPage}&${actionsParam}`;
-    
-    try {
-      const response = await fetch(url, {
-        cache: 'no-store',
-        headers: { 
-          'Authorization': `Bearer ${config.accessToken}`,
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to fetch ${ruleType} rules (page ${page}): ${errorText}`);
-      }
+    const response = await requestJson<RankingRulesResponse>(
+      session,
+      `/rest/organizations/${session.organizationId}/commerce/private/rules?trackingId=${encodeURIComponent(
+        session.trackingId,
+      )}&solutionType=${solutionType}&page=${page}&perPage=${perPage}&${actionQuery}`,
+      {transport, cache: 'no-store'},
+    );
 
-      const data: RankingRulesResponse = await response.json();
-      
-      if (!data.items || data.items.length === 0) {
-        hasMore = false;
-      } else {
-        allRules = [...allRules, ...data.items];
-        // Check if we have more pages
-        hasMore = (page + 1) * perPage < data.totalCount;
-        page++;
-      }
-    } catch (error) {
-      console.error(`Failed to fetch ${ruleType} rules on page ${page}:`, error);
-      throw error;
+    if (!response.items || response.items.length === 0) {
+      hasMore = false;
+    } else {
+      items.push(...response.items);
+      hasMore = (page + 1) * perPage < response.totalCount;
+      page += 1;
     }
   }
 
-  return allRules;
+  return items;
 };
 
-// Legacy function for backward compatibility
-export const fetchAllRankingRules = async (
-  config: ConfigState, 
-  solutionType: 'listing' | 'search'
-): Promise<RankingRuleModel[]> => {
-  return fetchAllRules(config, solutionType, 'ranking');
-};
+export const fetchAllRankingRules = (
+  session: SessionContext,
+  solutionType: 'listing' | 'search',
+  transport?: ApiTransport,
+) => fetchAllRules(session, solutionType, 'ranking', transport);
 
 export const createRankingRule = async (
-  config: ConfigState,
-  rulePayload: any, // Now accepts the full Hub UI format payload
-  solutionType: 'listing' | 'search'
-): Promise<any> => {
-  const baseUrl = getBaseUrl(config);
-  const url = `${baseUrl}/rest/organizations/${config.organizationId}/commerce/private/rules`;
-  
-  // The payload should already be in the correct format: { rule: {...}, solutionType, schedule, ruleTargets, isGlobal }
-  // Ensure solutionType is set correctly
-  const payload = {
-    ...rulePayload,
-    solutionType: solutionType
-  };
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${config.accessToken}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
+  session: SessionContext,
+  rulePayload: MerchandisingHubRulePayload,
+  solutionType: 'listing' | 'search',
+  transport?: ApiTransport,
+) =>
+  postJson<unknown>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/private/rules`,
+    {
+      ...rulePayload,
+      solutionType,
     },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to create ranking rule: ${errorText}`);
-  }
-
-  return await response.json();
-};
+    transport,
+  );
 
 export const bulkCreateRankingRules = async (
-  config: ConfigState,
-  rules: any[], // Now accepts full Hub UI format payloads
-  solutionType: 'listing' | 'search'
-): Promise<{ success: any[], errors: Array<{ rule: string, error: string }> }> => {
-  const success: any[] = [];
-  const errors: Array<{ rule: string, error: string }> = [];
+  session: SessionContext,
+  rules: MerchandisingHubRulePayload[],
+  solutionType: 'listing' | 'search',
+  transport?: ApiTransport,
+): Promise<BulkCreateRulesResult> => {
+  const success: unknown[] = [];
+  const errors: Array<{rule: string; error: string}> = [];
 
   for (const rulePayload of rules) {
     try {
-      const created = await createRankingRule(config, rulePayload, solutionType);
-      success.push(created);
+      success.push(await createRankingRule(session, rulePayload, solutionType, transport));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const ruleName = rulePayload.rule?.name || rulePayload.name || 'Unknown rule';
-      errors.push({ rule: ruleName, error: errorMessage });
+      errors.push({
+        rule: rulePayload.rule.name,
+        error: errorMessage,
+      });
     }
   }
 
-  return { success, errors };
+  return {success, errors};
 };

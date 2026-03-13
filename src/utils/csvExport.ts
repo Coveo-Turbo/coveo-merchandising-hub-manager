@@ -1,5 +1,6 @@
-import type { PublicListingPageResponseModel, CsvRow, QueryFilterModel, ConfigState, RuleLocaleModel } from '../types';
-import { fetchListingById } from '../services/coveoApi';
+import type {PublicListingPageResponseModel, CsvRow, QueryFilterModel, RuleLocaleModel, SessionContext} from '../types';
+import type {ApiTransport} from '../core/contracts';
+import {fetchListingById} from '../services/coveoApi';
 
 /**
  * Helper function to safely extract filter value as a string
@@ -109,8 +110,9 @@ function createRowsFromFilters(
  * Handles both modern pageRules format and legacy filterRules format
  */
 export async function convertListingsToCsv(
-  listings: PublicListingPageResponseModel[], 
-  config: ConfigState
+  listings: PublicListingPageResponseModel[],
+  session: SessionContext,
+  transport?: ApiTransport,
 ): Promise<CsvRow[]> {
   const rows: CsvRow[] = [];
 
@@ -150,7 +152,7 @@ export async function convertListingsToCsv(
   // Fetch all legacy listings in parallel for better performance
   if (legacyListings.length > 0) {
     const detailedListingsPromises = legacyListings.map(listing =>
-      fetchListingById(config, listing.id)
+      fetchListingById(session, listing.id, transport)
         .then(detailed => ({ listing, detailed, error: null }))
         .catch(error => ({ listing, detailed: null, error }))
     );
