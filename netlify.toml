@@ -1,8 +1,6 @@
 [build]
-  # The command to build your Vite app
-  command = "npm run build"
-  # The directory where Vite outputs the build (Vite defaults to 'dist')
-  publish = "dist"
+  command = "npm run build:web"
+  publish = "dist/web"
 
 # ---------------------------------------------------
 # RULE 1: API Rewrite (Must come BEFORE the SPA rule)

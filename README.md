@@ -1,133 +1,115 @@
-# Coveo Merchandising Hub Manager
+# CMH Manager
 
-A specialized web application designed to streamline the management of Coveo Commerce Listing Pages. This tool allows merchandisers and developers to bulk create/update listing configurations via CSV, manage global search and listing settings, and perform environment maintenance.
+CMH Manager is now a dual-surface application:
 
-## Features
+- A standalone web app for direct manual use.
+- A Chrome/Edge Manifest V3 extension that embeds the manager inside Coveo Merchandising Hub.
 
-### 1. Import Wizard
-*   **Connection-First Setup:** Connect with Organization ID, Region, and Access Token, then automatically load tracking IDs from `/rest/organizations/{organizationId}/trackingidcatalogmappings`.
-*   **Tracking Selector in Header:** Change tracking ID from the top menu without returning to step 1.
-*   **Bulk Creation/Update:** Upload a CSV file to create or update hundreds of listing pages at once.
-*   **Smart Parsing:** Automatically groups rows by page name, supports multiple URL patterns per page, and handles locale-specific rules.
-*   **Upsert Logic:** Checks for existing listings to prevent duplicates (API 412 errors) by updating existing IDs instead of failing.
-*   **AI Enhancement:** Uses Google Gemini (GenAI) to suggest relevant filter rules based on page names.
+The shared React codebase uses `@coveord/plasma-mantine` so the embedded experience looks consistent with the existing Coveo platform while preserving standalone operation.
 
-### 2. REST API for Programmatic Import
-*   **Automated Imports:** Trigger imports programmatically via a REST API endpoint without using the UI.
-*   **CI/CD Integration:** Integrate with GitHub Actions, Jenkins, or any automation tool.
-*   **Multiple Formats:** Accepts CSV file uploads or JSON payloads with CSV content.
-*   **See [API Documentation](./API.md) for details.**
+## What it does
 
-### 3. Global Configuration Manager
-*   **Search & Listing Configs:** View and edit the global configuration JSON for your Commerce organization.
-*   **Common Settings UI:** Quickly adjust `perPage`, `additionalFields`, and `sorts` using a visual interface without touching JSON.
-*   **Copy/Paste Settings:** Easily copy common settings from your Search config to your Listing config to keep them consistent.
-*   **Product Suggest & Recommendations:** Manage configurations for these subsystems as well.
+- Bulk import and upsert listing pages from CSV.
+- Fetch, edit, and save global search, listing, product suggest, and recommendation query configuration.
+- Export and import ranking or filter rules through the private Commerce API.
+- Export all listing pages to CSV or delete all listing pages for the active tracking ID.
+- Reuse the current Merchandising Hub session in extension mode when org and token context can be discovered from the page.
 
-### 4. Ranking Rules Manager
-*   **Export:** Fetch and export all ranking rules as JSON for backup and portability.
-*   **Import:** Upload and import ranking rules from JSON files.
-*   **Full API Support:** Uses Coveo's private Commerce API for complete import/export functionality.
-*   **Bulk Operations:** Import multiple rules at once with validation and error reporting.
-*   **See [Ranking Rules Documentation](./docs/RANKING_RULES.md) for detailed usage guide.**
+## Architecture
 
-### 5. Maintenance Tools
-*   **Bulk Delete:** A "Danger Zone" utility to fetch and delete all listing pages for a specific tracking ID. Useful for resetting non-production environments.
-*   **Export:** Download all listing pages as a CSV file for backup or editing.
+### Standalone web app
 
-## Getting Started
+- Entry point: `src/main.tsx`
+- Uses a browser session store and direct authenticated platform requests.
+- Best when you want to connect manually outside of Merchandising Hub.
 
-### Prerequisites
-*   Node.js (v18+)
-*   npm or yarn
+### Embedded MV3 extension
 
-### Installation
+- Manifest: `src/extension/manifest.ts`
+- Content script injects a `CMH Manager` item into the Hub left rail and mounts the app inside a shadow-root overlay.
+- Page bridge harvests discoverable session context from the Hub page and captures auth/platform context from page requests.
+- Background worker stores per-tab session context and proxies authenticated API requests.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd cmh-manager
-    ```
+## Environment
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+### Optional local AI key
 
-3.  **Set up Environment Variables:**
-    Create a `.env` (or `.env.local`) file in the root directory to store your Google Gemini API Key (required for AI features).
-    ```env
-    VITE_API_KEY=your_google_gemini_api_key
-    ```
+If you want AI enhancement to call Gemini directly during local development:
 
-4.  **Run the development server:**
-    ```bash
-    npm run dev
-    ```
-
-## Usage Guide
-
-### Step 1: Connection
-Enter your Coveo Platform credentials and connect.
-*   **Region:** Select the platform region (US, CA, EU, AU).
-*   **Organization ID:** The ID of your Coveo organization.
-*   **Access Token:** An API key with **Commerce - Merchandising Hub (Edit)** privileges.
-*   **Connect:** The app calls `/trackingidcatalogmappings` and extracts tracking IDs. If no tracking IDs are found, the wizard remains blocked at step 1.
-
-After a successful connection:
-*   Tracking IDs are available in a header dropdown (desktop and mobile).
-*   You can switch tracking IDs quickly from the top menu.
-*   A **Disconnect** action is available in the top menu to clear session and reconnect to another org/token.
-*   Session state (org, region, token, tracking ID) is saved for the current browser session.
-
-> **Developer Mode:** Click the "V1.1" version number in the header 5 times to enable Developer Mode, allowing you to load preset configurations.
-
-### Step 2: CSV Upload
-Prepare a CSV file with the following headers:
-*   `Name` (Required): The internal name of the listing page.
-*   `UrlPattern`: The URL to match. Separate multiple URLs with semicolons (`;`).
-*   `FilterField`: The field to filter on (e.g., `ec_category`).
-*   `FilterValue`: The value to match.
-*   `Language`, `Country`, `Currency` (Optional): Define locale-specific rules.
-
-**Example:**
-```csv
-Name,UrlPattern,FilterField,FilterValue,Language
-"Summer Sale","https://site.com/summer",ec_category,Summer,en
-"Summer Sale","https://site.com/ete",ec_category,Ete,fr
+```env
+VITE_GEMINI_API_KEY=your_google_gemini_api_key
 ```
 
-### Step 3: Preview & AI
-Review the parsed data.
-*   **Check URLs:** Ensure all patterns are correctly grouped.
-*   **AI Enhance:** Click the "AI Enhance" button on a row to let Gemini suggest an additional rule based on the page name.
+### Extension/backend API base URL
 
-### Step 4: Submit
-Click **Push to CMH**. The app will:
-1.  Fetch all existing listings to check for name collisions.
-2.  Update existing listings (by ID).
-3.  Create new listings.
+The extension cannot rely on same-origin `/api/*` rewrites. Point it to the deployed web/backend host:
 
-## API Usage
+```env
+VITE_CMH_API_BASE_URL=https://your-app.netlify.app
+```
 
-For programmatic imports (CI/CD, automation, batch operations), use the REST API endpoint:
+### Optional sample connection tokens
+
+```env
+VITE_TOKEN_TREK=...
+VITE_TOKEN_FASHION=...
+VITE_TOKEN_ELECTRONICS=...
+```
+
+## Development
+
+Install dependencies:
 
 ```bash
-curl -X POST https://your-app.netlify.app/api/import \
-  -F "file=@listings.csv" \
-  -F "organizationId=myorganization" \
-  -F "trackingId=ecommerce-site" \
-  -F "accessToken=xx-xxxx-xxxx-xxxx"
+npm install
 ```
 
-See the [API Documentation](./API.md) for complete details, examples, and integration guides.
+Run the standalone web app:
 
-## Technology Stack
-*   **Frontend:** React 19, Vite, TypeScript
-*   **Styling:** Tailwind CSS v4
-*   **Icons:** Lucide React
-*   **AI:** Google GenAI SDK
-*   **Data Parsing:** PapaParse
-*   **API:** Netlify Functions (serverless)
+```bash
+npm run dev:web
+```
 
+Run the extension build in dev mode:
 
+```bash
+npm run dev:extension
+```
+
+## Build outputs
+
+Build both surfaces:
+
+```bash
+npm run build
+```
+
+Output directories:
+
+- Web app: `dist/web`
+- Extension: `dist/extension`
+
+Netlify now builds only the standalone web app with `npm run build:web`.
+
+## Load the extension locally
+
+1. Run `npm run build:extension`.
+2. Open `chrome://extensions` or `edge://extensions`.
+3. Enable Developer Mode.
+4. Click `Load unpacked`.
+5. Select `dist/extension`.
+6. Open a Merchandising Hub page such as `https://commerce.cloud.coveo.com/...`.
+7. Click `CMH Manager` in the left navigation.
+
+## Verification
+
+Validated locally with:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+Note: lint currently emits the `baseline-browser-mapping` freshness notice from a dependency, but the command exits successfully.

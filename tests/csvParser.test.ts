@@ -1,0 +1,37 @@
+import {describe, expect, it} from 'vitest';
+import {mapRowsToListings} from '../src/utils/csvParser';
+import type {CsvRow} from '../src/types';
+
+describe('mapRowsToListings', () => {
+  it('groups rows by listing name and deduplicates rules', () => {
+    const rows: CsvRow[] = [
+      {
+        Name: 'Summer Sale',
+        UrlPattern: 'https://site.example/summer;https://site.example/deals',
+        FilterField: 'ec_category',
+        FilterValue: 'Summer',
+        FilterOperator: 'isExactly',
+        Language: 'en',
+        Country: 'US',
+        Currency: 'USD',
+      },
+      {
+        Name: 'Summer Sale',
+        UrlPattern: 'https://site.example/summer',
+        FilterField: 'ec_category',
+        FilterValue: 'Summer',
+        FilterOperator: 'isExactly',
+        Language: 'en',
+        Country: 'US',
+        Currency: 'USD',
+      },
+    ];
+
+    const listings = mapRowsToListings(rows, 'storefront');
+
+    expect(listings).toHaveLength(1);
+    expect(listings[0].patterns).toHaveLength(2);
+    expect(listings[0].pageRules).toHaveLength(1);
+    expect(listings[0].trackingId).toBe('storefront');
+  });
+});

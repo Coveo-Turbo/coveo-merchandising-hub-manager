@@ -1,204 +1,222 @@
-import type { RankingRuleModel } from '../types';
+import type {
+  MerchandisingHubRulePayload,
+  MerchandisingHubRuleRecord,
+  RuleImportModel,
+  RuleModel,
+} from '../types';
 
-/**
- * Export ranking rules to JSON format
- */
-export function exportRankingRulesToJSON(rules: RankingRuleModel[]): string {
-  return JSON.stringify(rules, null, 2);
-}
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
-/**
- * Transform/validate Merchandising Hub UI export format
- * Preserves the original Hub UI format since the API expects it
- */
-function transformMerchandisingHubFormat(hubRule: any): any {
-  if (hubRule.rule && typeof hubRule.rule === 'object') {
-    // This is Merchandising Hub UI format - preserve it as-is
-    // The API expects this exact structure with filters, value, etc.
-    return hubRule;
+const toHubRuleRecord = (value: unknown): MerchandisingHubRuleRecord | null => {
+  if (!isRecord(value) || typeof value.name !== 'string' || typeof value.action !== 'string') {
+    return null;
   }
-  
-  // If it's in a flat format (our own export), convert it to Hub UI format
-  // This ensures compatibility with the API
+
   return {
-    rule: {
-      name: hubRule.name,
-      description: hubRule.description || '',
-      action: hubRule.action,
-      trackingId: hubRule.trackingId,
-      enabled: hubRule.enabled !== undefined ? hubRule.enabled : true,
-      type: hubRule.action === 'include' || hubRule.action === 'exclude' || hubRule.action === 'onlyShow' ? 'filter' : 'ranking',
-      filters: hubRule.conditions?.map((cond: any) => ({
-        fieldName: cond.field,
-        operator: cond.operator,
-        value: {
-          type: 'array',
-          values: cond.values || (Array.isArray(cond.value) ? cond.value : [cond.value])
-        }
-      })) || [],
-      value: hubRule.definition?.boostFactor || hubRule.definition?.position || 0,
-      locales: [],
-      rulePrecondition: null,
-      audienceConditions: []
+    name: value.name,
+    description: typeof value.description === 'string' ? value.description : '',
+    action: value.action as MerchandisingHubRuleRecord['action'],
+    trackingId: typeof value.trackingId === 'string' ? value.trackingId : '',
+    enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
+    type:
+      value.action === 'include' || value.action === 'exclude' || value.action === 'onlyShow' ? 'filter' : 'ranking',
+    filters: Array.isArray(value.conditions)
+      ? value.conditions
+          .filter(isRecord)
+          .map((condition) => ({
+            fieldName:
+              typeof condition.field === 'string'
+                ? condition.field
+                : typeof condition.fieldName === 'string'
+                  ? condition.fieldName
+                  : '',
+            operator: typeof condition.operator === 'string' ? condition.operator : 'isExactly',
+            value: {
+              type: 'array',
+              values: Array.isArray(condition.values)
+                ? condition.values.filter((entry): entry is string => typeof entry === 'string')
+                : condition.value === undefined
+                  ? []
+                  : [String(condition.value)],
+            },
+          }))
+      : [],
+    value:
+      isRecord(value.definition) && typeof value.definition.boostFactor === 'number'
+        ? value.definition.boostFactor
+        : isRecord(value.definition) && typeof value.definition.position === 'number'
+          ? value.definition.position
+          : 0,
+    locales: [],
+    rulePrecondition: null,
+    audienceConditions: [],
+  };
+};
+
+function transformMerchandisingHubFormat(hubRule: unknown): MerchandisingHubRulePayload {
+  if (isRecord(hubRule) && isRecord(hubRule.rule)) {
+    return hubRule as unknown as MerchandisingHubRulePayload;
+  }
+
+  return {
+    rule: toHubRuleRecord(hubRule) ?? {
+      name: 'Unknown rule',
+      action: 'boost',
+      trackingId: '',
+      enabled: true,
     },
-    solutionType: null, // Will be set during import
+    solutionType: undefined,
     schedule: null,
     ruleTargets: null,
-    isGlobal: true
+    isGlobal: true,
   };
 }
 
-/**
- * Parse and validate ranking rules from JSON
- * trackingId is optional during validation as it will be overridden during import
- * Supports both our export format and Merchandising Hub UI export format
- */
+export function exportRankingRulesToJSON(rules: RuleImportModel[]): string {
+  return JSON.stringify(rules, null, 2);
+}
+
 export function parseRankingRulesJSON(jsonString: string): {
   valid: boolean;
-  data?: import('../types').RuleImportModel[];
+  data?: RuleImportModel[];
   error?: string;
 } {
   try {
-    const parsed = JSON.parse(jsonString);
-    
+    const parsed = JSON.parse(jsonString) as unknown;
+
     if (!Array.isArray(parsed)) {
-      return {
-        valid: false,
-        error: 'Invalid format: Expected an array of rules'
-      };
+      return {valid: false, error: 'Invalid format: Expected an array of rules'};
     }
-    
-    // Transform rules if they're in Merchandising Hub format
+
     const transformedRules = parsed.map(transformMerchandisingHubFormat);
-    
-    // Validate structure
-    for (let i = 0; i < transformedRules.length; i++) {
-      const item = transformedRules[i];
-      const rule = item.rule || item; // Support both wrapped (Hub UI) and flat format
-      
+
+    for (const [index, item] of transformedRules.entries()) {
+      const rule = item.rule;
+
       if (!rule.name || typeof rule.name !== 'string') {
-        return {
-          valid: false,
-          error: `Invalid format at index ${i}: name is required and must be a string`
-        };
+        return {valid: false, error: `Invalid format at index ${index}: name is required and must be a string`};
       }
-      
-      // trackingId is optional - it will be overridden during import with the config trackingId
+
       if (rule.trackingId && typeof rule.trackingId !== 'string') {
-        return {
-          valid: false,
-          error: `Invalid format at index ${i}: trackingId must be a string if provided`
-        };
+        return {valid: false, error: `Invalid format at index ${index}: trackingId must be a string if provided`};
       }
-      
-      // enabled is optional - defaults to true if not provided
+
       if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
+        return {valid: false, error: `Invalid format at index ${index}: enabled must be a boolean if provided`};
+      }
+
+      if (
+        !rule.action ||
+        !['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent', 'include', 'exclude', 'onlyShow'].includes(
+          rule.action,
+        )
+      ) {
         return {
           valid: false,
-          error: `Invalid format at index ${i}: enabled must be a boolean if provided`
+          error:
+            'Invalid format at index ' +
+            index +
+            ': action must be one of: boost, bury, pin, reservedPosition, spotlightContent, include, exclude, onlyShow',
         };
       }
-      
-      if (!rule.action || !['boost', 'bury', 'pin', 'reservedPosition', 'spotlightContent', 'include', 'exclude', 'onlyShow'].includes(rule.action)) {
-        return {
-          valid: false,
-          error: `Invalid format at index ${i}: action must be one of: boost, bury, pin, reservedPosition, spotlightContent, include, exclude, onlyShow`
-        };
+
+      if (rule.value !== undefined && (typeof rule.value !== 'number' || !Number.isFinite(rule.value))) {
+        return {valid: false, error: `Invalid format at index ${index}: value must be a finite number`};
       }
-      
-      // Validate value (Hub UI format) or definition.boostFactor (flat format)
-      if (rule.value !== undefined) {
-        if (typeof rule.value !== 'number' || !Number.isFinite(rule.value)) {
+
+      if (rule.filters !== undefined && !Array.isArray(rule.filters)) {
+        return {valid: false, error: `Invalid format at index ${index}: filters must be an array`};
+      }
+
+      for (const [conditionIndex, filter] of (rule.filters ?? []).entries()) {
+        if (!filter.fieldName || typeof filter.fieldName !== 'string') {
           return {
             valid: false,
-            error: `Invalid format at index ${i}: value must be a finite number`
+            error: `Invalid condition at index ${index}, condition ${conditionIndex}: fieldName is required`,
           };
         }
-      }
-      
-      // definition is optional
-      if (rule.definition !== undefined && typeof rule.definition !== 'object') {
-        return {
-          valid: false,
-          error: `Invalid format at index ${i}: definition must be an object if provided`
-        };
-      }
-      
-      // Validate boostFactor if present
-      if (rule.definition?.boostFactor !== undefined) {
-        if (typeof rule.definition.boostFactor !== 'number' || !Number.isFinite(rule.definition.boostFactor)) {
+
+        if (!filter.operator || typeof filter.operator !== 'string') {
           return {
             valid: false,
-            error: `Invalid format at index ${i}: definition.boostFactor must be a finite number`
+            error: `Invalid condition at index ${index}, condition ${conditionIndex}: operator is required`,
           };
-        }
-      }
-      
-      // Validate position if present
-      if (rule.definition?.position !== undefined) {
-        if (typeof rule.definition.position !== 'number' || !Number.isFinite(rule.definition.position) || rule.definition.position < 0) {
-          return {
-            valid: false,
-            error: `Invalid format at index ${i}: definition.position must be a positive finite number`
-          };
-        }
-      }
-      
-      // Validate conditions (flat format) or filters (Hub UI format)
-      const conditionsOrFilters = rule.conditions || rule.filters;
-      if (conditionsOrFilters !== undefined) {
-        if (!Array.isArray(conditionsOrFilters)) {
-          return {
-            valid: false,
-            error: `Invalid format at index ${i}: conditions/filters must be an array`
-          };
-        }
-        
-        for (let j = 0; j < conditionsOrFilters.length; j++) {
-          const condition = conditionsOrFilters[j];
-          
-          // For Hub UI format, fields are 'fieldName' not 'field'
-          const fieldName = condition.field || condition.fieldName;
-          if (!fieldName || typeof fieldName !== 'string') {
-            return {
-              valid: false,
-              error: `Invalid condition at index ${i}, condition ${j}: field/fieldName is required and must be a string`
-            };
-          }
-          
-          if (!condition.operator || typeof condition.operator !== 'string') {
-            return {
-              valid: false,
-              error: `Invalid condition at index ${i}, condition ${j}: operator is required and must be a string`
-            };
-          }
         }
       }
     }
-    
+
     return {
       valid: true,
-      data: transformedRules as RankingRuleModel[]
+      data: transformedRules,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return {
-      valid: false,
-      error: `JSON parse error: ${errorMessage}`
-    };
+    return {valid: false, error: `JSON parse error: ${errorMessage}`};
   }
 }
 
-/**
- * Download ranking rules as JSON file
- */
+export const toImportPayload = (
+  rules: RuleImportModel[],
+  trackingId: string,
+  solutionType: 'listing' | 'search',
+): MerchandisingHubRulePayload[] =>
+  rules.map((item) => {
+    if ('rule' in item) {
+      const hubItem = item as MerchandisingHubRulePayload;
+      const rule = hubItem.rule;
+      const normalizedRule: MerchandisingHubRuleRecord = {
+        ...rule,
+        trackingId,
+      };
+      delete normalizedRule.id;
+      delete normalizedRule.createdBy;
+      delete normalizedRule.createdAt;
+      delete normalizedRule.updatedAt;
+      delete normalizedRule.updatedBy;
+
+      return {
+        rule: normalizedRule,
+        solutionType,
+        schedule: hubItem.schedule ?? null,
+        ruleTargets: hubItem.ruleTargets ?? null,
+        isGlobal: hubItem.isGlobal ?? true,
+      };
+    }
+
+    const flatRule = item as RuleModel;
+    const rest: RuleModel = {
+      ...flatRule,
+    };
+    delete rest.id;
+    delete rest.createdBy;
+    delete rest.createdAt;
+    delete rest.updatedAt;
+    delete rest.updatedBy;
+
+    return {
+      rule: {
+        ...(toHubRuleRecord(rest) ?? {
+          name: rest.name,
+          action: rest.action,
+          trackingId,
+          enabled: rest.enabled,
+        }),
+        trackingId,
+      },
+      solutionType,
+      schedule: null,
+      ruleTargets: null,
+      isGlobal: true,
+    };
+  });
+
 export function downloadRankingRulesJSON(
-  rules: import('../types').RuleImportModel[], 
+  rules: RuleImportModel[],
   ruleType: 'ranking' | 'filter' = 'ranking',
-  solutionType: 'listing' | 'search' = 'listing'
+  solutionType: 'listing' | 'search' = 'listing',
 ) {
-  const jsonString = exportRankingRulesToJSON(rules as any);
-  const blob = new Blob([jsonString], { type: 'application/json' });
+  const jsonString = exportRankingRulesToJSON(rules);
+  const blob = new Blob([jsonString], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

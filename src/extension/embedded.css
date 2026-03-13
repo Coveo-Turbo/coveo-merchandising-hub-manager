@@ -1,0 +1,14 @@
+.cmh-manager-embedded-root {
+  height: 100%;
+  min-height: 100%;
+  overflow: auto;
+  background: var(--cmh-manager-embedded-background, #f5f6f8);
+  font-family: var(--cmh-manager-embedded-font-family, inherit);
+  color: inherit;
+  scrollbar-gutter: stable;
+}
+
+.cmh-manager-embedded-root,
+.cmh-manager-embedded-root * {
+  box-sizing: border-box;
+}
