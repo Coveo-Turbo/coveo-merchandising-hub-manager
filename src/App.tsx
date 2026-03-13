@@ -23,6 +23,7 @@ import {
 } from '@coveord/plasma-mantine';
 import {
   IconCode,
+  IconDownload,
   IconLayoutList,
   IconLogout,
   IconRefreshAlert,
@@ -118,6 +119,8 @@ const sectionlessConnectionMessage =
   'Refresh Hub context to reuse the current page session, or open the listings workspace to connect manually.';
 
 const embeddedBoldWeight = 'var(--coveo-fw-bold, 600)';
+const extensionReleaseDownloadUrl =
+  'https://github.com/Coveo-Turbo/coveo-merchandising-hub-manager/releases/latest/download/cmh-manager-extension.zip';
 
 const embeddedTabsStyles = {
   root: {
@@ -151,7 +154,8 @@ const StandaloneLayout = ({
 }) => {
   const [mobileNavOpened, {close: closeMobileNav, toggle: toggleMobileNav}] = useDisclosure(false);
   const hasTrackingSelector = Boolean(controller.session && controller.availableTrackingIds.length > 0);
-  const hasHeaderActions = hasTrackingSelector || Boolean(controller.session) || Boolean(onExitEmbedded);
+  const hasExtensionDownload = !onExitEmbedded;
+  const hasHeaderActions = hasTrackingSelector || hasExtensionDownload || Boolean(controller.session) || Boolean(onExitEmbedded);
   const mobileHeaderHeight = hasHeaderActions ? 156 : 88;
 
   const trackingSelect = (
@@ -194,6 +198,19 @@ const StandaloneLayout = ({
             </Group>
 
             <Group gap="sm" wrap="nowrap" visibleFrom="sm">
+              {hasExtensionDownload && (
+                <Button
+                  component="a"
+                  href={extensionReleaseDownloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="light"
+                  color="violet"
+                  leftSection={<IconDownload size={16} />}
+                >
+                  Download extension
+                </Button>
+              )}
               {hasTrackingSelector && (
                 <Group gap="xs" wrap="nowrap">
                   <Text size="sm" c="dimmed">
@@ -239,6 +256,20 @@ const StandaloneLayout = ({
                     </Button>
                   )}
                 </Group>
+              )}
+
+              {hasExtensionDownload && (
+                <Button
+                  component="a"
+                  href={extensionReleaseDownloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="light"
+                  color="violet"
+                  leftSection={<IconDownload size={16} />}
+                >
+                  Download extension
+                </Button>
               )}
             </Stack>
           )}

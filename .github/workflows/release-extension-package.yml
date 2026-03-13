@@ -1,0 +1,51 @@
+name: Release Extension Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to upload the extension asset to
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-extension-${{ github.event.release.tag_name || inputs.tag || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  package-extension:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension release asset
+        run: npm run package:extension-release
+
+      - name: Verify GitHub release exists
+        run: gh release view "$RELEASE_TAG"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload extension asset
+        run: gh release upload "$RELEASE_TAG" dist/release/cmh-manager-extension.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

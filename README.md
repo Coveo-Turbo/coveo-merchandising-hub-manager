@@ -91,6 +91,28 @@ Output directories:
 
 Netlify now builds only the standalone web app with `npm run build:web`.
 
+## Package the extension for a GitHub Release
+
+Create the uploadable release asset:
+
+```bash
+npm run package:extension-release
+```
+
+Release artifact:
+
+- `dist/release/cmh-manager-extension.zip`
+
+GitHub Actions now packages and uploads that ZIP automatically when a GitHub Release is published.
+
+If you need to rebuild the asset locally or re-upload it manually:
+
+- Run `npm run package:extension-release`
+- Upload `dist/release/cmh-manager-extension.zip` to the matching GitHub Release
+- Or run the `Release Extension Package` workflow manually with the target tag
+
+The standalone web app download button points to the stable latest-release asset URL for `cmh-manager-extension.zip`.
+
 ## Load the extension locally
 
 1. Run `npm run build:extension`.
