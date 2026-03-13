@@ -70,10 +70,8 @@ const closeManager = () => {
   unmountManager();
 };
 
-const applyHostLayout = (host: HTMLElement) => {
+const applyHostInsets = (host: HTMLElement) => {
   const bounds = resolveEmbeddedHostInsets();
-  const appearance = captureEmbeddedAppearance();
-
   host.style.position = 'fixed';
   host.style.top = `${bounds.top}px`;
   host.style.left = `${bounds.left}px`;
@@ -83,10 +81,28 @@ const applyHostLayout = (host: HTMLElement) => {
   host.style.overflow = 'auto';
   host.style.boxSizing = 'border-box';
   host.style.boxShadow = '-1px 0 0 rgba(15, 23, 42, 0.08)';
+};
+
+const applyHostLayout = (host: HTMLElement) => {
+  const appearance = captureEmbeddedAppearance();
   host.style.setProperty('--cmh-manager-embedded-background', appearance.backgroundColor || '#f5f6f8');
   host.style.setProperty('--cmh-manager-embedded-font-family', appearance.fontFamily || 'inherit');
-
   activeAppearance = appearance;
+  applyHostInsets(host);
+};
+
+let pendingInsetsFrameId: number | null = null;
+const scheduleHostInsets = () => {
+  if (pendingInsetsFrameId !== null) {
+    return;
+  }
+  pendingInsetsFrameId = requestAnimationFrame(() => {
+    pendingInsetsFrameId = null;
+    const host = document.getElementById(HOST_ID);
+    if (host) {
+      applyHostInsets(host);
+    }
+  });
 };
 
 const injectBridge = () => {
@@ -286,26 +302,22 @@ chrome.runtime.onMessage.addListener((message: ExtensionTabMessage) => {
 
 window.addEventListener('hashchange', syncManagerMount);
 window.addEventListener('popstate', syncManagerMount);
-window.addEventListener('resize', () => {
-  const host = document.getElementById(HOST_ID);
-  if (host) {
-    applyHostLayout(host);
-  }
-});
+window.addEventListener('resize', scheduleHostInsets);
+window.addEventListener('scroll', scheduleHostInsets);
 
-window.addEventListener('scroll', () => {
-  const host = document.getElementById(HOST_ID);
-  if (host) {
-    applyHostLayout(host);
-  }
-});
-
+let pendingMutationFrameId: number | null = null;
 const observer = new MutationObserver(() => {
   injectNavButton();
-  const host = document.getElementById(HOST_ID);
-  if (host) {
-    applyHostLayout(host);
+  if (pendingMutationFrameId !== null) {
+    return;
   }
+  pendingMutationFrameId = requestAnimationFrame(() => {
+    pendingMutationFrameId = null;
+    const host = document.getElementById(HOST_ID);
+    if (host) {
+      applyHostInsets(host);
+    }
+  });
 });
 
 injectBridge();

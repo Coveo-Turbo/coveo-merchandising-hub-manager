@@ -6,10 +6,6 @@ export const getApiBaseUrl = () => {
     return trimTrailingSlash(configured);
   }
 
-  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
-    return '';
-  }
-
   return '';
 };
 
