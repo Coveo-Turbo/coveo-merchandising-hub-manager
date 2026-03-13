@@ -93,7 +93,23 @@ Netlify now builds only the standalone web app with `npm run build:web`.
 
 ## Package the extension for a GitHub Release
 
-Create the uploadable release asset:
+The normal release flow is now automated from merged PRs into `main`.
+
+1. Add exactly one release label to the PR:
+   - `release:patch`
+   - `release:minor`
+   - `release:major`
+2. Merge the PR into `main`.
+3. GitHub Actions will:
+   - bump the project version
+   - synchronize the extension manifest version
+   - commit and tag the release on `main`
+   - create the GitHub Release
+   - upload `cmh-manager-extension.zip`
+
+If you need a manual fallback, run the `Release On Main` workflow from GitHub Actions and choose the bump level.
+
+You can still create the uploadable release asset locally:
 
 ```bash
 npm run package:extension-release

@@ -1,0 +1,135 @@
+name: Release On Main
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump to apply
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-on-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_BRANCH: main
+    steps:
+      - name: Resolve release settings
+        id: settings
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const validLabels = ['release:patch', 'release:minor', 'release:major'];
+
+            if (context.eventName === 'workflow_dispatch') {
+              const bump = core.getInput('bump', {required: true});
+              core.setOutput('bump', bump);
+              core.setOutput('ref', 'main');
+              core.setOutput('source', 'manual:main');
+              return;
+            }
+
+            const labels = (context.payload.pull_request.labels || []).map((label) => label.name);
+            const matchedLabels = labels.filter((label) => validLabels.includes(label));
+
+            if (matchedLabels.length !== 1) {
+              core.setFailed(
+                `Expected exactly one release label on the merged PR. Supported labels: ${validLabels.join(', ')}. Found: ${
+                  matchedLabels.length ? matchedLabels.join(', ') : 'none'
+                }.`
+              );
+              return;
+            }
+
+            const bump = matchedLabels[0].replace('release:', '');
+            core.setOutput('bump', bump);
+            core.setOutput('ref', 'main');
+            core.setOutput('source', `pr:${context.payload.pull_request.number}`);
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.settings.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump project version
+        env:
+          RELEASE_BUMP: ${{ steps.settings.outputs.bump }}
+        run: |
+          npm version "$RELEASE_BUMP" --no-git-tag-version
+          npm run sync:version
+
+      - name: Read version
+        id: version
+        run: echo "value=$(node -p \"JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Build extension release asset
+        run: npm run package:extension-release
+
+      - name: Commit and tag release
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          git add package.json package-lock.json src/extension/manifest.ts
+          git commit -m "chore: release v$VERSION"
+          git tag "v$VERSION"
+
+      - name: Push release commit and tag
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          git push origin HEAD:${DEFAULT_BRANCH}
+          git push origin "v$VERSION"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          gh release create "v$VERSION" \
+            dist/release/cmh-manager-extension.zip \
+            --title "v$VERSION" \
+            --generate-notes
+
+      - name: Summarize release
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          RELEASE_SOURCE: ${{ steps.settings.outputs.source }}
+        run: |
+          {
+            echo "## Release Created"
+            echo
+            echo "- Version: \`v$VERSION\`"
+            echo "- Source: \`$RELEASE_SOURCE\`"
+            echo "- Asset: \`cmh-manager-extension.zip\`"
+          } >> "$GITHUB_STEP_SUMMARY"

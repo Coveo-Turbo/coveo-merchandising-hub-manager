@@ -11,6 +11,7 @@
     "build": "npm run build:web && npm run build:extension",
     "build:web": "tsc -b && vite build",
     "build:extension": "tsc -b && vite build --mode extension",
+    "sync:version": "node scripts/syncProjectVersion.mjs",
     "package:extension-release": "npm run build:extension && node scripts/packageExtensionRelease.mjs",
     "lint": "eslint .",
     "test": "vitest run",
