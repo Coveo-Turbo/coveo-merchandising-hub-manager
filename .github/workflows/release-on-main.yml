@@ -91,7 +91,7 @@ jobs:
 
       - name: Read version
         id: version
-        run: echo "value=$(node -p \"JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version\")" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
 
       - name: Build extension release asset
         run: npm run package:extension-release
