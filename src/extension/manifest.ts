@@ -10,7 +10,7 @@ const commerceMatches = [
 export default defineManifest({
   manifest_version: 3,
   name: 'CMH Manager',
-  version: '1.2.0',
+  version: '1.2.1',
   description: 'Blend CMH Manager into Coveo Merchandising Hub while keeping the standalone web app available.',
   permissions: ['storage', 'tabs'],
   host_permissions: [
