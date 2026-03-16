@@ -34,6 +34,7 @@ jobs:
         id: settings
         uses: actions/github-script@v7
         with:
+          bump: ${{ inputs.bump }}
           script: |
             const validLabels = ['release:patch', 'release:minor', 'release:major'];
 
