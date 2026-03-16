@@ -17,7 +17,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: release-on-main
@@ -105,12 +105,26 @@ jobs:
           git commit -m "chore: release v$VERSION"
           git tag "v$VERSION"
 
-      - name: Push release commit and tag
+      - name: Create release branch and push tag
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          git push origin HEAD:${DEFAULT_BRANCH}
+          # Create a dedicated release branch from the current release commit
+          # instead of pushing directly to main (which is protected by branch rules).
+          git checkout -b "release/v$VERSION"
+          git push origin "release/v$VERSION"
           git push origin "v$VERSION"
+
+      - name: Open pull request to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          gh pr create \
+            --base "${DEFAULT_BRANCH}" \
+            --head "release/v$VERSION" \
+            --title "chore: release v$VERSION" \
+            --body "Automated release PR for version \`v$VERSION\`. Merge this PR to land the version bump on \`${DEFAULT_BRANCH}\`."
 
       - name: Create GitHub release
         env:
@@ -133,4 +147,5 @@ jobs:
             echo "- Version: \`v$VERSION\`"
             echo "- Source: \`$RELEASE_SOURCE\`"
             echo "- Asset: \`cmh-manager-extension.zip\`"
+            echo "- Branch: \`release/v$VERSION\` → PR opened to \`${DEFAULT_BRANCH}\`"
           } >> "$GITHUB_STEP_SUMMARY"
