@@ -25,7 +25,12 @@ concurrency:
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    # Skip PRs coming from a release branch (e.g. release/v1.2.3) so that
+    # merging the automated release PR does not trigger another release run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       !startsWith(github.event.pull_request.head.ref, 'release/'))
     runs-on: ubuntu-latest
     env:
       DEFAULT_BRANCH: main
