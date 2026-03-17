@@ -48,9 +48,9 @@ export const MaintenanceSection = ({controller}: MaintenanceSectionProps) => {
                 </Text>
               </Stack>
 
-              <Alert color="blue" variant="light" title="Backend requirement" icon={<IconAlertTriangle size={16} />}>
-                Dry-run generates the hosted bundle without calling <Code>coveo ui:deploy</Code>. Executing the hosted
-                deploy step requires the backend runtime to provide the Coveo CLI.
+              <Alert color="blue" variant="light" title="Backend execution" icon={<IconAlertTriangle size={16} />}>
+                Dry-run generates the hosted bundle and diagnostics without publishing. Non-dry-run now publishes
+                directly through the Hosted Page API from the backend.
               </Alert>
 
               <SimpleGrid cols={{base: 1, md: 2}} spacing="md">

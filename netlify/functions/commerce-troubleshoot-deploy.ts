@@ -1,14 +1,11 @@
 import os from 'node:os';
 import path from 'node:path';
-import {spawnSync} from 'node:child_process';
 import type {CommerceTroubleshootDeployRequest} from '../../src/types';
 import {resolvePlatformRegionFromUrl} from '../../src/utils/platformRegion';
 
 const jsonHeaders = {'Content-Type': 'application/json'};
 
 const toString = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
-
-const resolveCoveoCommand = () => (process.platform === 'win32' ? 'coveo.cmd' : 'coveo');
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -40,30 +37,6 @@ const validatePayload = (payload: CommerceTroubleshootDeployRequest) => {
   ].filter(Boolean);
 
   return missingFields;
-};
-
-const ensureCoveoCliAvailable = () => {
-  const command = resolveCoveoCommand();
-  const result = spawnSync(command, ['--version'], {encoding: 'utf8'});
-
-  if (result.error) {
-    return {
-      available: false,
-      diagnostics: [String(result.error.message || result.error)],
-    };
-  }
-
-  if (result.status !== 0) {
-    return {
-      available: false,
-      diagnostics: [result.stdout?.trim() || '', result.stderr?.trim() || ''].filter(Boolean),
-    };
-  }
-
-  return {
-    available: true,
-    diagnostics: [result.stdout?.trim() || result.stderr?.trim() || ''].filter(Boolean),
-  };
 };
 
 const loadDeployModule = async () => {
@@ -103,22 +76,6 @@ export default async (request: Request) => {
       diagnostics.push(`[server] derived region "${region}" from platformUrl.`);
     } else {
       diagnostics.push('[server] platformUrl did not map to a known hosted deploy region; default deployer resolution will be used.');
-    }
-
-    if (!payload.dryRun) {
-      const coveoCli = ensureCoveoCliAvailable();
-      if (!coveoCli.available) {
-        return jsonResponse(
-          {
-            error:
-              'Hosted deploy is blocked because this backend runtime does not have the Coveo CLI available. The reusable deployer currently executes `coveo ui:deploy` for non-dry-run deployments.',
-            diagnostics: [...diagnostics, ...coveoCli.diagnostics],
-          },
-          501,
-        );
-      }
-
-      diagnostics.push(...coveoCli.diagnostics.map((line) => `[server] coveo-cli=${line}`));
     }
 
     const deployTroubleshootConsole = await loadDeployModule();
