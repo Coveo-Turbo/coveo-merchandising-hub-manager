@@ -20,10 +20,13 @@ import {
   updateGlobalSearchConfig,
 } from '../services/coveoApi';
 import {enhanceListingWithAI} from '../services/geminiService';
+import {deployCommerceTroubleshootConsole as deployCommerceTroubleshootConsoleRequest} from '../services/commerceTroubleshootConsoleService';
 import {SAMPLE_CONFIGS} from '../services/sampleConfigs';
 import type {
   AppStatus,
   BulkCreateRulesResult,
+  CommerceTroubleshootDeployFormState,
+  CommerceTroubleshootDeployResult,
   ConfigState,
   CsvRow,
   GlobalConfigDataShape,
@@ -47,6 +50,13 @@ const DEFAULT_CONFIG: ConfigState = {
   trackingId: '',
   accessToken: '',
   platformUrl: 'https://platform.cloud.coveo.com',
+};
+
+const DEFAULT_TROUBLESHOOT_DEPLOY_FORM: CommerceTroubleshootDeployFormState = {
+  hostedPageName: '',
+  hostedPageId: '',
+  trackingId: '',
+  dryRun: false,
 };
 
 const getErrorMessage = (error: unknown, fallback = 'Unknown error') =>
@@ -93,6 +103,12 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<AppStatus | null>(null);
+  const [troubleshootDeployForm, setTroubleshootDeployForm] = useState<CommerceTroubleshootDeployFormState>(
+    DEFAULT_TROUBLESHOOT_DEPLOY_FORM,
+  );
+  const [troubleshootDeployResult, setTroubleshootDeployResult] = useState<CommerceTroubleshootDeployResult | null>(
+    null,
+  );
   const [listingStep, setListingStep] = useState<ListingStep>(1);
   const [parsedListings, setParsedListings] = useState<PublicListingPageRequestModel[]>([]);
   const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
@@ -131,6 +147,15 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   const applySession = useCallback(async (nextSession: SessionContext | null, message?: AppStatus) => {
     setSession(nextSession);
     setConnectionStatus(nextSession ? 'connected' : 'disconnected');
+    setTroubleshootDeployForm(
+      nextSession
+        ? {
+            ...DEFAULT_TROUBLESHOOT_DEPLOY_FORM,
+            trackingId: nextSession.trackingId,
+          }
+        : DEFAULT_TROUBLESHOOT_DEPLOY_FORM,
+    );
+    setTroubleshootDeployResult(null);
     setListingStep(nextSession ? 2 : 1);
     setGlobalConfigData(null);
     setGlobalConfigString('');
@@ -280,10 +305,26 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     const nextSession = {...session, trackingId};
     setSession(nextSession);
     setConnectionForm(nextSession);
+    setTroubleshootDeployForm((current) => ({
+      ...current,
+      trackingId,
+    }));
+    setTroubleshootDeployResult(null);
     setListingStep(2);
     setParsedListings([]);
     await persistSession(nextSession);
     setStatus({type: 'info', message: `Tracking ID switched to "${trackingId}".`});
+  };
+
+  const updateTroubleshootDeployForm = <Key extends keyof CommerceTroubleshootDeployFormState>(
+    key: Key,
+    value: CommerceTroubleshootDeployFormState[Key],
+  ) => {
+    setTroubleshootDeployForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+    setTroubleshootDeployResult(null);
   };
 
   const handleFileUpload = async (file: File | null) => {
@@ -800,6 +841,69 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     }
   };
 
+  const deployTroubleshootConsole = async () => {
+    if (!session) {
+      return;
+    }
+
+    const hostedPageName = troubleshootDeployForm.hostedPageName.trim();
+    const hostedPageId = troubleshootDeployForm.hostedPageId.trim();
+    const trackingId = troubleshootDeployForm.trackingId.trim();
+
+    if (!hostedPageName) {
+      setStatus({type: 'error', message: 'Enter a hosted page name before deploying the troubleshoot console.'});
+      return;
+    }
+
+    if (!trackingId) {
+      setStatus({type: 'error', message: 'Enter a runtime default tracking ID before deploying the troubleshoot console.'});
+      return;
+    }
+
+    setLoading(true);
+    setTroubleshootDeployResult(null);
+    setStatus({
+      type: 'info',
+      message: troubleshootDeployForm.dryRun
+        ? 'Running a Commerce Troubleshoot Console dry-run through the backend...'
+        : 'Deploying the Commerce Troubleshoot Console hosted page through the backend...',
+    });
+
+    try {
+      const result = await deployCommerceTroubleshootConsoleRequest({
+        organizationId: session.organizationId,
+        accessToken: session.accessToken,
+        platformUrl: session.platformUrl,
+        trackingId,
+        hostedPageName,
+        ...(hostedPageId ? {hostedPageId} : {}),
+        dryRun: troubleshootDeployForm.dryRun,
+      });
+
+      setTroubleshootDeployResult(result);
+      if (result.hostedPageId) {
+        setTroubleshootDeployForm((current) => ({
+          ...current,
+          hostedPageId: result.hostedPageId ?? current.hostedPageId,
+        }));
+      }
+
+      setStatus({
+        type: 'success',
+        message: result.deployed
+          ? `Commerce Troubleshoot Console deployed to hosted page "${result.hostedPageName}".`
+          : `Commerce Troubleshoot Console dry-run completed for "${result.hostedPageName}".`,
+      });
+    } catch (error) {
+      setStatus({
+        type: 'error',
+        message: `Troubleshoot Console deploy failed: ${getErrorMessage(error, 'Unknown error.')}`,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetListings = () => {
     setParsedListings([]);
     setListingStep(isSessionReady ? 2 : 1);
@@ -828,6 +932,8 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     connectionStatus,
     loading,
     status,
+    troubleshootDeployForm,
+    troubleshootDeployResult,
     listingStep,
     parsedListings,
     globalConfigType,
@@ -879,6 +985,8 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setRankingRulesType,
     exportAllListings,
     deleteAllListings,
+    updateTroubleshootDeployForm,
+    deployTroubleshootConsole,
     resetListings,
     setIsDeleteConfirming,
     setShowManualConnection,
