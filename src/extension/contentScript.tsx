@@ -13,8 +13,8 @@ import datesStyles from '@mantine/dates/styles.css?inline';
 import appStyles from '../index.css?inline';
 import embeddedStyles from './embedded.css?inline';
 import {captureEmbeddedAppearance, findSidebarRoot, resolveEmbeddedHostInsets} from './layout';
+import {shouldDeactivateManagerFromTarget, syncManagerNavItem} from './navigation';
 
-const NAV_BUTTON_ID = 'cmh-manager-extension-nav';
 const HOST_ID = 'cmh-manager-extension-host';
 const ROOT_CLASS = 'cmh-manager-embedded-root';
 const CONTEXT_MESSAGE_TYPE = 'CMH_MANAGER_CONTEXT';
@@ -24,6 +24,7 @@ let activeContext: SessionContext | null = null;
 let activeRoot: Root | null = null;
 let activeAppearance: EmbeddedAppearance | null = null;
 let refreshWaiters: Array<(value: SessionContext | null) => void> = [];
+let activeSidebar: HTMLElement | null = null;
 
 const transport = createExtensionApiTransport();
 
@@ -60,6 +61,17 @@ const openManager = () => {
       params.set('cmhSection', 'listings');
     }
   });
+};
+
+const getManagerHref = () => {
+  const params = getSearchParams();
+  params.set('cmhManager', '1');
+  if (!params.has('cmhSection')) {
+    params.set('cmhSection', 'listings');
+  }
+
+  const query = params.toString();
+  return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
 };
 
 const closeManager = () => {
@@ -119,6 +131,41 @@ const injectBridge = () => {
 
 const requestBridgeRefresh = () => {
   window.postMessage({type: REFRESH_MESSAGE_TYPE}, window.location.origin);
+};
+
+const handleSidebarClick = (event: Event) => {
+  if (!isManagerOpen() || !activeSidebar) {
+    return;
+  }
+
+  if (shouldDeactivateManagerFromTarget(activeSidebar, event.target)) {
+    closeManager();
+  }
+};
+
+const handleSidebarKeydown = (event: KeyboardEvent) => {
+  if ((event.key !== 'Enter' && event.key !== ' ') || !isManagerOpen() || !activeSidebar) {
+    return;
+  }
+
+  if (shouldDeactivateManagerFromTarget(activeSidebar, event.target)) {
+    closeManager();
+  }
+};
+
+const ensureSidebarListeners = (sidebar: HTMLElement) => {
+  if (activeSidebar === sidebar) {
+    return;
+  }
+
+  if (activeSidebar) {
+    activeSidebar.removeEventListener('click', handleSidebarClick, true);
+    activeSidebar.removeEventListener('keydown', handleSidebarKeydown, true);
+  }
+
+  activeSidebar = sidebar;
+  activeSidebar.addEventListener('click', handleSidebarClick, true);
+  activeSidebar.addEventListener('keydown', handleSidebarKeydown, true);
 };
 
 const normalizeContext = (snapshot: HubContextSnapshot): SessionContext | null => {
@@ -191,46 +238,18 @@ const extensionContextResolver: ContextResolver = {
   },
 };
 
-const createNavButton = () => {
-  const button = document.createElement('button');
-  button.id = NAV_BUTTON_ID;
-  button.type = 'button';
-  button.textContent = 'CMH Manager';
-  button.style.width = '100%';
-  button.style.display = 'flex';
-  button.style.alignItems = 'center';
-  button.style.padding = '12px 16px';
-  button.style.borderRadius = '10px';
-  button.style.border = 'none';
-  button.style.cursor = 'pointer';
-  button.style.color = 'white';
-  button.style.fontWeight = '600';
-  button.style.background = 'transparent';
-  button.style.marginTop = '8px';
-  button.addEventListener('click', openManager);
-  return button;
-};
-
-const updateNavButtonState = () => {
-  const button = document.getElementById(NAV_BUTTON_ID) as HTMLButtonElement | null;
-  if (!button) {
-    return;
-  }
-
-  button.style.background = isManagerOpen() ? '#5c2ee5' : 'transparent';
-};
-
 const injectNavButton = () => {
   const sidebar = findSidebarRoot();
   if (!sidebar) {
     return;
   }
 
-  if (!document.getElementById(NAV_BUTTON_ID)) {
-    sidebar.appendChild(createNavButton());
-  }
-
-  updateNavButtonState();
+  ensureSidebarListeners(sidebar);
+  syncManagerNavItem(sidebar, {
+    active: isManagerOpen(),
+    href: getManagerHref(),
+    onActivate: () => openManager(),
+  });
 };
 
 const mountManager = () => {
@@ -277,7 +296,6 @@ function unmountManager() {
 
 const syncManagerMount = () => {
   injectNavButton();
-  updateNavButtonState();
   if (isManagerOpen()) {
     mountManager();
   } else {
