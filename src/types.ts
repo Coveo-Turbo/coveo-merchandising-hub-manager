@@ -256,3 +256,37 @@ export interface BulkCreateRulesResult {
   success: unknown[];
   errors: Array<{rule: string; error: string}>;
 }
+
+export interface CommerceTroubleshootDeployRequest {
+  organizationId: string;
+  accessToken: string;
+  platformUrl: string;
+  trackingId: string;
+  hostedPageName: string;
+  hostedPageId?: string;
+  dryRun?: boolean;
+}
+
+export interface CommerceTroubleshootDeployKeyInfo {
+  created: boolean;
+  reused: boolean;
+  source: 'managed' | 'provided';
+  engineKeyId?: string;
+  cmhKeyId?: string;
+}
+
+export interface CommerceTroubleshootDeployResult {
+  organizationId: string;
+  hostedPageName: string;
+  hostedPageId?: string;
+  deployed: boolean;
+  diagnostics: string[];
+  keyInfo: CommerceTroubleshootDeployKeyInfo;
+}
+
+export interface CommerceTroubleshootDeployFormState {
+  hostedPageName: string;
+  hostedPageId: string;
+  trackingId: string;
+  dryRun: boolean;
+}
