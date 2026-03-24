@@ -136,7 +136,7 @@ The standalone web app download button points to the stable latest-release asset
 3. Enable Developer Mode.
 4. Click `Load unpacked`.
 5. Select `dist/extension`.
-6. Open a Merchandising Hub page such as `https://commerce.cloud.coveo.com/...`.
+6. Open a Merchandising Hub page such as `https://commerce.cloud.coveo.com/...` or the corresponding `https://platform.cloud.coveo.com/...` route after login.
 7. Click `CMH Manager` in the left navigation.
 
 ## Verification

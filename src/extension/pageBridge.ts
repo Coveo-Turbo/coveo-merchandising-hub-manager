@@ -1,4 +1,5 @@
 import type {HubContextSnapshot} from '../types';
+import {inferPlatformUrlFromHostname} from './hosts';
 
 declare global {
   interface Window {
@@ -18,20 +19,6 @@ const readJson = (value: string) => {
   } catch {
     return value;
   }
-};
-
-const inferPlatformUrl = () => {
-  const hostname = window.location.hostname;
-  if (hostname.includes('commerce-ca.')) {
-    return 'https://platform-ca.cloud.coveo.com';
-  }
-  if (hostname.includes('commerce-eu.')) {
-    return 'https://platform-eu.cloud.coveo.com';
-  }
-  if (hostname.includes('commerce-au.')) {
-    return 'https://platform-au.cloud.coveo.com';
-  }
-  return 'https://platform.cloud.coveo.com';
 };
 
 const readLabelValue = (labelText: string) => {
@@ -220,7 +207,7 @@ const buildSnapshot = (): HubContextSnapshot => {
   const storedSnapshot = readJson(window.sessionStorage.getItem(STORAGE_CAPTURE_KEY) || '{}');
   const persistedSnapshot = isRecord(storedSnapshot) ? (storedSnapshot as HubContextSnapshot) : {};
   const liveSnapshot: HubContextSnapshot = {
-    platformUrl: inferPlatformUrl(),
+    platformUrl: inferPlatformUrlFromHostname(window.location.hostname),
     organizationId: parseOrgIdFromLocation(),
     organizationName: readLabelValue('organization:'),
     propertyName: readLabelValue('property:'),
