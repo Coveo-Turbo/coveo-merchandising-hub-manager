@@ -1,11 +1,5 @@
 import {defineManifest} from '@crxjs/vite-plugin';
-
-const commerceMatches = [
-  'https://commerce.cloud.coveo.com/*',
-  'https://commerce-ca.cloud.coveo.com/*',
-  'https://commerce-eu.cloud.coveo.com/*',
-  'https://commerce-au.cloud.coveo.com/*',
-];
+import {extensionPageMatches} from './hosts';
 
 export default defineManifest({
   manifest_version: 3,
@@ -25,14 +19,14 @@ export default defineManifest({
   },
   content_scripts: [
     {
-      matches: commerceMatches,
+      matches: extensionPageMatches,
       js: ['src/extension/contentScript.tsx'],
       run_at: 'document_idle',
     },
   ],
   web_accessible_resources: [
     {
-      matches: commerceMatches,
+      matches: extensionPageMatches,
       resources: [],
     },
   ],

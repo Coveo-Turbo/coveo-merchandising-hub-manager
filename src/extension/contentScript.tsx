@@ -12,6 +12,7 @@ import coreStyles from '@mantine/core/styles.css?inline';
 import datesStyles from '@mantine/dates/styles.css?inline';
 import appStyles from '../index.css?inline';
 import embeddedStyles from './embedded.css?inline';
+import {inferPlatformUrlFromHostname} from './hosts';
 import {captureEmbeddedAppearance, findSidebarRoot, resolveEmbeddedHostInsets} from './layout';
 import {shouldDeactivateManagerFromTarget, syncManagerNavItem} from './navigation';
 
@@ -27,19 +28,6 @@ let refreshWaiters: Array<(value: SessionContext | null) => void> = [];
 let activeSidebar: HTMLElement | null = null;
 
 const transport = createExtensionApiTransport();
-
-const inferPlatformUrl = (hostname: string) => {
-  if (hostname.includes('commerce-ca.')) {
-    return 'https://platform-ca.cloud.coveo.com';
-  }
-  if (hostname.includes('commerce-eu.')) {
-    return 'https://platform-eu.cloud.coveo.com';
-  }
-  if (hostname.includes('commerce-au.')) {
-    return 'https://platform-au.cloud.coveo.com';
-  }
-  return 'https://platform.cloud.coveo.com';
-};
 
 const getSearchParams = () => new URLSearchParams(window.location.search);
 
@@ -177,7 +165,7 @@ const normalizeContext = (snapshot: HubContextSnapshot): SessionContext | null =
     return null;
   }
 
-  const platformUrl = snapshot.platformUrl?.trim() || inferPlatformUrl(window.location.hostname);
+  const platformUrl = snapshot.platformUrl?.trim() || inferPlatformUrlFromHostname(window.location.hostname);
   const trackingIds = snapshot.trackingIds?.filter((entry) => entry.trim().length > 0) ?? [];
   const resolvedTrackingId = trackingId || trackingIds[0];
 
