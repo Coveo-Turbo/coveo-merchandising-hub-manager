@@ -202,7 +202,7 @@ export interface CsvRow {
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';
-export type AppSection = 'listings' | 'global-config' | 'rules' | 'maintenance';
+export type AppSection = 'listings' | 'global-config' | 'context-mappings' | 'rules' | 'maintenance';
 export type ListingStep = 1 | 2 | 3 | 4;
 export type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
 
@@ -246,6 +246,22 @@ export interface GlobalConfigDataShape extends QueryConfigData {
   queryConfiguration?: QueryConfigData;
   rules?: JsonValue;
 }
+
+export type ContextMappingDestinationAttribute = 'QUERY_PIPELINE_CONTEXT' | 'ML_CONTEXT' | 'FIELD_ALIASES';
+
+export interface ContextMappingDestination extends JsonObject {
+  attribute?: ContextMappingDestinationAttribute;
+  fieldAlias?: string;
+  fieldSource?: string;
+}
+
+export interface ContextMappingDefinition extends JsonObject {
+  key?: string;
+  type?: string;
+  destinations?: ContextMappingDestination[];
+}
+
+export type ContextMappingsDataShape = ContextMappingDefinition[];
 
 export interface AppStatus {
   type: 'success' | 'error' | 'info';

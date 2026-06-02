@@ -6,14 +6,18 @@ import {
   bulkCreateRankingRules,
   bulkDeleteListings,
   bulkUpdateListings,
+  createContextMapping,
+  deleteContextMapping,
   createGlobalProductSuggestConfig,
   fetchAllListings,
   fetchAllRules,
   fetchTrackingIdsFromCatalogMappings,
+  getContextMappings,
   getGlobalListingConfig,
   getGlobalProductSuggestConfig,
   getGlobalRecommendationsConfig,
   getGlobalSearchConfig,
+  updateContextMapping,
   updateGlobalListingConfig,
   updateGlobalProductSuggestConfig,
   updateGlobalRecommendationsConfig,
@@ -22,12 +26,15 @@ import {
 import {enhanceListingWithAI} from '../services/geminiService';
 import {deployCommerceTroubleshootConsole as deployCommerceTroubleshootConsoleRequest} from '../services/commerceTroubleshootConsoleService';
 import {SAMPLE_CONFIGS} from '../services/sampleConfigs';
+import {buildContextMappingsSyncPlan, validateContextMappings} from '../features/context-mappings/contextMappingsSync';
 import type {
   AppStatus,
   BulkCreateRulesResult,
+  ContextMappingDefinition,
   CommerceTroubleshootDeployFormState,
   CommerceTroubleshootDeployResult,
   ConfigState,
+  ContextMappingsDataShape,
   CsvRow,
   GlobalConfigDataShape,
   GlobalConfigType,
@@ -61,6 +68,23 @@ const DEFAULT_TROUBLESHOOT_DEPLOY_FORM: CommerceTroubleshootDeployFormState = {
 
 const getErrorMessage = (error: unknown, fallback = 'Unknown error') =>
   error instanceof Error && error.message ? error.message : fallback;
+
+const parseContextMappingsString = (value: string): {parsed: ContextMappingsDataShape | null; error: string | null} => {
+  if (!value.trim()) {
+    return {parsed: null, error: null};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as ContextMappingsDataShape;
+    if (!Array.isArray(parsed)) {
+      return {parsed: null, error: 'Context mappings JSON must be an array.'};
+    }
+
+    return {parsed, error: validateContextMappings(parsed)};
+  } catch (error) {
+    return {parsed: null, error: getErrorMessage(error, 'Invalid JSON.')};
+  }
+};
 
 const createDefaultSession = (config: ConfigState): SessionContext => ({
   ...config,
@@ -114,6 +138,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
   const [globalConfigData, setGlobalConfigData] = useState<GlobalConfigDataShape | null>(null);
   const [globalConfigString, setGlobalConfigString] = useState('');
+  const [contextMappingsData, setContextMappingsData] = useState<ContextMappingsDataShape>([]);
+  const [contextMappingsBaseline, setContextMappingsBaseline] = useState<ContextMappingsDataShape>([]);
+  const [contextMappingsString, setContextMappingsStringState] = useState('[]');
+  const [contextMappingsValidationError, setContextMappingsValidationError] = useState<string | null>(null);
   const [sharedSettings, setSharedSettings] = useState<SharedSettings | null>(null);
   const [pendingSortLabels, setPendingSortLabels] = useState<Array<{language: string; value: string}>>([]);
   const [pendingSortLang, setPendingSortLang] = useState('en');
@@ -159,6 +187,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setListingStep(nextSession ? 2 : 1);
     setGlobalConfigData(null);
     setGlobalConfigString('');
+    setContextMappingsData([]);
+    setContextMappingsBaseline([]);
+    setContextMappingsStringState('[]');
+    setContextMappingsValidationError(null);
     setRankingRulesData([]);
     setRankingRulesJSON('');
     setIsDeleteConfirming(false);
@@ -190,6 +222,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setParsedListings([]);
     setGlobalConfigData(null);
     setGlobalConfigString('');
+    setContextMappingsData([]);
+    setContextMappingsBaseline([]);
+    setContextMappingsStringState('[]');
+    setContextMappingsValidationError(null);
     setRankingRulesData([]);
     setRankingRulesJSON('');
     setIsDeleteConfirming(false);
@@ -312,6 +348,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setTroubleshootDeployResult(null);
     setListingStep(2);
     setParsedListings([]);
+    setContextMappingsData([]);
+    setContextMappingsBaseline([]);
+    setContextMappingsStringState('[]');
+    setContextMappingsValidationError(null);
     await persistSession(nextSession);
     setStatus({type: 'info', message: `Tracking ID switched to "${trackingId}".`});
   };
@@ -536,6 +576,193 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     } finally {
       setLoading(false);
     }
+  };
+
+  const setContextMappingsString = (nextValue: string) => {
+    setContextMappingsStringState(nextValue);
+    const {parsed, error} = parseContextMappingsString(nextValue);
+    setContextMappingsData(parsed ?? []);
+    setContextMappingsValidationError(error);
+  };
+
+  const updateContextMappingsEditor = (nextValue: ContextMappingsDataShape) => {
+    setContextMappingsData(nextValue);
+    setContextMappingsStringState(JSON.stringify(nextValue, null, 2));
+    setContextMappingsValidationError(null);
+  };
+
+  const addContextMapping = async (mapping: ContextMappingDefinition) => {
+    if (!session) {
+      return false;
+    }
+
+    setLoading(true);
+    setStatus(null);
+    try {
+      const created = await createContextMapping(session, mapping, transport);
+      const nextMappings = [...contextMappingsData, created];
+      setContextMappingsBaseline(nextMappings);
+      updateContextMappingsEditor(nextMappings);
+      setStatus({type: 'success', message: `Created context mapping "${mapping.key || 'mapping'}".`});
+      return true;
+    } catch (error) {
+      setStatus({type: 'error', message: `Failed to create context mapping: ${getErrorMessage(error, 'Unknown error.')}`});
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateContextMappingEntry = async (key: string, mapping: ContextMappingDefinition) => {
+    if (!session) {
+      return false;
+    }
+
+    setLoading(true);
+    setStatus(null);
+    try {
+      const updated = await updateContextMapping(session, key, mapping, transport);
+      const nextMappings = contextMappingsData.map((currentMapping) =>
+        currentMapping.key === key ? updated : currentMapping,
+      );
+      setContextMappingsBaseline(nextMappings);
+      updateContextMappingsEditor(nextMappings);
+      setStatus({type: 'success', message: `Updated context mapping "${mapping.key || key}".`});
+      return true;
+    } catch (error) {
+      setStatus({type: 'error', message: `Failed to update context mapping: ${getErrorMessage(error, 'Unknown error.')}`});
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeContextMapping = async (index: number) => {
+    if (!session) {
+      return false;
+    }
+
+    const key = contextMappingsData[index]?.key?.trim();
+    if (!key) {
+      setStatus({type: 'error', message: 'Failed to delete context mapping: Missing mapping key.'});
+      return false;
+    }
+
+    setLoading(true);
+    setStatus(null);
+    try {
+      await deleteContextMapping(session, key, transport);
+      const nextMappings = contextMappingsData.filter((_, currentIndex) => currentIndex !== index);
+      setContextMappingsBaseline(nextMappings);
+      updateContextMappingsEditor(nextMappings);
+      setStatus({type: 'success', message: `Deleted context mapping "${key}".`});
+      return true;
+    } catch (error) {
+      setStatus({type: 'error', message: `Failed to delete context mapping: ${getErrorMessage(error, 'Unknown error.')}`});
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchContextMappings = async () => {
+    if (!session) {
+      return;
+    }
+
+    setLoading(true);
+    setStatus(null);
+    try {
+      const data = await getContextMappings(session, transport);
+      const normalizedData = Array.isArray(data) ? data : [];
+      setContextMappingsBaseline(normalizedData);
+      setContextMappingsData(normalizedData);
+      setContextMappingsStringState(JSON.stringify(normalizedData, null, 2));
+      setContextMappingsValidationError(null);
+    } catch (error) {
+      setStatus({type: 'error', message: `Failed to fetch context mappings: ${getErrorMessage(error, 'Unknown error.')}`});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveContextMappings = async () => {
+    if (!session || !contextMappingsString.trim()) {
+      return;
+    }
+
+    const {parsed, error} = parseContextMappingsString(contextMappingsString);
+    const nextMappings = parsed ?? [];
+    setContextMappingsData(nextMappings);
+    setContextMappingsValidationError(error);
+
+    if (error || !parsed) {
+      setStatus({type: 'error', message: `Invalid JSON: ${error || 'Unknown error.'}`});
+      return;
+    }
+
+    const operations = buildContextMappingsSyncPlan(contextMappingsBaseline, parsed);
+
+    setLoading(true);
+    setStatus(null);
+    try {
+      for (const operation of operations) {
+        if (operation.type === 'create') {
+          await createContextMapping(session, operation.mapping, transport);
+        }
+
+        if (operation.type === 'update') {
+          await updateContextMapping(session, operation.key, operation.mapping, transport);
+        }
+
+        if (operation.type === 'delete') {
+          await deleteContextMapping(session, operation.key, transport);
+        }
+      }
+
+      setContextMappingsBaseline(parsed);
+      setContextMappingsData(parsed);
+      setStatus({type: 'success', message: 'Context mappings saved successfully.'});
+    } catch (error) {
+      setStatus({type: 'error', message: `Failed to save context mappings: ${getErrorMessage(error, 'Unknown error.')}`});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadContextMappingsFile = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      const {parsed, error} = parseContextMappingsString(content);
+      setContextMappingsStringState(content);
+      setContextMappingsData(parsed ?? []);
+      setContextMappingsValidationError(error);
+
+      if (error) {
+        throw new Error(error);
+      }
+
+      setStatus({type: 'success', message: 'Context mappings JSON loaded.'});
+    } catch (error) {
+      setStatus({type: 'error', message: `Failed to load context mappings JSON: ${getErrorMessage(error, 'Unknown error.')}`});
+    }
+  };
+
+  const exportContextMappings = () => {
+    if (!contextMappingsString.trim()) {
+      return;
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([contextMappingsString], {type: 'application/json'}));
+    link.download = `context-mappings-${session?.trackingId || 'config'}-${date}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   const updateGlobalConfigData = (nextValue: GlobalConfigDataShape) => {
@@ -939,6 +1166,9 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     globalConfigType,
     globalConfigData,
     globalConfigString,
+    contextMappingsData,
+    contextMappingsString,
+    contextMappingsValidationError,
     sharedSettings,
     pendingSortLabels,
     pendingSortLang,
@@ -966,6 +1196,14 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     saveGlobalConfig,
     setGlobalConfigType,
     setGlobalConfigString,
+    fetchContextMappings,
+    saveContextMappings,
+    setContextMappingsString,
+    addContextMapping,
+    updateContextMapping: updateContextMappingEntry,
+    removeContextMapping,
+    loadContextMappingsFile,
+    exportContextMappings,
     copySharedSettings,
     pasteSharedSettings,
     addAdditionalField,

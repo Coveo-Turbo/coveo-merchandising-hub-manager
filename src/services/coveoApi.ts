@@ -3,6 +3,7 @@ import {createBrowserApiTransport} from '../core/apiTransport';
 import type {
   BulkCreateRulesResult,
   CommercePageModelPublicListingPageResponseModel,
+  ContextMappingsDataShape,
   DetailedListingPageResponseModel,
   GlobalConfigDataShape,
   JsonObject,
@@ -124,6 +125,17 @@ const postJson = <T>(
     body: JSON.stringify(body),
     headers: {'Content-Type': 'application/json'},
   });
+
+const deleteJson = <T>(session: SessionContext, path: string, transport?: ApiTransport) =>
+  requestJson<T>(session, path, {
+    transport,
+    method: 'DELETE',
+  });
+
+const getContextMappingsBasePath = (session: SessionContext) =>
+  `/rest/organizations/${session.organizationId}/commerce/v2/tracking-ids/${encodeURIComponent(
+    session.trackingId,
+  )}/context-mappings`;
 
 export interface RankingRulesResponse {
   page: number;
@@ -350,6 +362,42 @@ export const updateGlobalRecommendationsConfig = async (
     transport,
     'PUT',
   );
+
+export const getContextMappings = async (session: SessionContext, transport?: ApiTransport) =>
+  requestJson<ContextMappingsDataShape>(
+    session,
+    getContextMappingsBasePath(session),
+    {transport, cache: 'no-store'},
+  );
+
+export const createContextMapping = async (
+  session: SessionContext,
+  data: ContextMappingsDataShape[number],
+  transport?: ApiTransport,
+) =>
+  postJson<ContextMappingsDataShape[number]>(
+    session,
+    getContextMappingsBasePath(session),
+    data,
+    transport,
+  );
+
+export const updateContextMapping = async (
+  session: SessionContext,
+  key: string,
+  data: ContextMappingsDataShape[number],
+  transport?: ApiTransport,
+) =>
+  postJson<ContextMappingsDataShape[number]>(
+    session,
+    `${getContextMappingsBasePath(session)}/${encodeURIComponent(key)}`,
+    data,
+    transport,
+    'PUT',
+  );
+
+export const deleteContextMapping = async (session: SessionContext, key: string, transport?: ApiTransport) =>
+  deleteJson<unknown>(session, `${getContextMappingsBasePath(session)}/${encodeURIComponent(key)}`, transport);
 
 export const fetchAllRules = async (
   session: SessionContext,
