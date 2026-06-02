@@ -8,6 +8,7 @@ import {
   FileInput,
   Group,
   Header,
+  MultiSelect,
   NativeSelect,
   Stack,
   Text,
@@ -16,52 +17,75 @@ import {
 } from '@coveord/plasma-mantine';
 import {IconAlertTriangle, IconDownload, IconFileUpload, IconRefreshAlert, IconTrashX} from '@coveord/plasma-react-icons';
 import type {ManagerController} from '../../hooks/useManagerController';
-import type {ContextMappingDestinationAttribute, ContextMappingsDocument} from '../../types';
+import type {ContextMappingDefinition, ContextMappingDestinationAttribute} from '../../types';
 import {embeddedInputStyles} from '../../ui/embeddedControlStyles';
 
 interface ContextMappingsSectionProps {
   controller: ManagerController;
 }
 
+const DEFAULT_DESTINATIONS: ContextMappingDestinationAttribute[] = ['QUERY_PIPELINE_CONTEXT'];
+
 export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps) => {
   const isEmbedded = controller.runtime === 'extension';
   const inputStyles = isEmbedded ? embeddedInputStyles : undefined;
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   const [mappingKey, setMappingKey] = useState('');
   const [mappingType, setMappingType] = useState('STRING');
-  const [mappingDestination, setMappingDestination] = useState<ContextMappingDestinationAttribute>('QUERY_PIPELINE_CONTEXT');
+  const [mappingDestinations, setMappingDestinations] = useState<ContextMappingDestinationAttribute[]>(DEFAULT_DESTINATIONS);
   const [mappingFieldAlias, setMappingFieldAlias] = useState('');
   const [mappingFieldSource, setMappingFieldSource] = useState('');
-  const contextMappingsDocument =
-    controller.contextMappingsData &&
-    !Array.isArray(controller.contextMappingsData) &&
-    typeof controller.contextMappingsData === 'object'
-      ? (controller.contextMappingsData as ContextMappingsDocument)
-      : null;
-  const mappingEntries = contextMappingsDocument?.mappings ?? [];
-  const structuredEditorAvailable = !controller.contextMappingsString.trim() || Boolean(contextMappingsDocument);
-  const addMapping = () => {
+  const mappingEntries = controller.contextMappingsData ?? [];
+  const structuredEditorAvailable = !controller.contextMappingsString.trim() || Array.isArray(controller.contextMappingsData);
+  const usesFieldAliases = mappingDestinations.includes('FIELD_ALIASES');
+
+  const resetBuilder = () => {
+    setEditingKey(null);
+    setMappingKey('');
+    setMappingType('STRING');
+    setMappingDestinations(DEFAULT_DESTINATIONS);
+    setMappingFieldAlias('');
+    setMappingFieldSource('');
+  };
+
+  const saveMapping = async () => {
     const key = mappingKey.trim();
     const fieldAlias = mappingFieldAlias.trim();
     const fieldSource = mappingFieldSource.trim();
-    if (!key || (mappingDestination === 'FIELD_ALIASES' && (!fieldAlias || !fieldSource))) {
+    if (!key || !mappingDestinations.length || (usesFieldAliases && (!fieldAlias || !fieldSource))) {
       return;
     }
 
-    controller.addContextMapping({
+    const mapping: ContextMappingDefinition = {
       key,
       type: mappingType,
-      destinations: [
-        {
-          attribute: mappingDestination,
-          ...(mappingDestination === 'FIELD_ALIASES' ? {fieldAlias, fieldSource} : {}),
-        },
-      ],
-    });
-    setMappingKey('');
-    setMappingType('STRING');
-    setMappingDestination('QUERY_PIPELINE_CONTEXT');
-    setMappingFieldAlias('');
-    setMappingFieldSource('');
+      destinations: mappingDestinations.map((attribute) => ({
+        attribute,
+        ...(attribute === 'FIELD_ALIASES' ? {fieldAlias, fieldSource} : {}),
+      })),
+    };
+
+    const success = editingKey
+      ? await controller.updateContextMapping(editingKey, mapping)
+      : await controller.addContextMapping(mapping);
+
+    if (success !== false) {
+      resetBuilder();
+    }
+  };
+
+  const startEditingMapping = (mapping: ContextMappingDefinition) => {
+    setEditingKey(mapping.key?.trim() || null);
+    setMappingKey(mapping.key || '');
+    setMappingType(mapping.type || 'STRING');
+    setMappingDestinations(
+      (mapping.destinations ?? [])
+        .map((destination) => destination.attribute)
+        .filter((value): value is ContextMappingDestinationAttribute => Boolean(value)),
+    );
+    const fieldAliasDestination = (mapping.destinations ?? []).find((destination) => destination.attribute === 'FIELD_ALIASES');
+    setMappingFieldAlias(fieldAliasDestination?.fieldAlias || '');
+    setMappingFieldSource(fieldAliasDestination?.fieldSource || '');
   };
 
   return (
@@ -129,7 +153,7 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
 
           {!structuredEditorAvailable && (
             <Alert color="yellow" variant="light" title="Structured editor unavailable" icon={<IconAlertTriangle size={16} />}>
-              The builder works with object-based payloads. Fix the JSON or reload the current mappings to use it.
+              The builder works with array-based payloads. Fix the JSON or reload the current mappings to use it.
             </Alert>
           )}
 
@@ -138,13 +162,13 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
               <Stack gap={4}>
                 <Text fw={600}>Mappings</Text>
                 <Text size="sm" c="dimmed">
-                  Add or remove mapping entries without hand-authoring the full JSON document.
+                  Create, edit, or delete mappings from the list while keeping the JSON editor in sync.
                 </Text>
               </Stack>
 
               <Stack gap="xs">
                 {mappingEntries.map((mapping, index) => (
-                  <Card key={`mapping-${index}`} withBorder radius="sm" padding="sm">
+                  <Card key={mapping.key || `mapping-${index}`} withBorder radius="sm" padding="sm">
                     <Group justify="space-between" align="flex-start">
                       <Stack gap={4}>
                         <Group gap="xs">
@@ -153,7 +177,7 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                         </Group>
                         <Group gap="xs">
                           {(mapping.destinations ?? []).map((destination, destinationIndex) => (
-                            <Group key={`mapping-${index}-destination-${destinationIndex}`} gap="xs">
+                            <Group key={`${mapping.key || index}-destination-${destinationIndex}`} gap="xs">
                               <Badge variant="light">{destination.attribute || 'Unsupported destination in JSON'}</Badge>
                               {destination.attribute === 'FIELD_ALIASES' &&
                               (destination.fieldAlias || destination.fieldSource) ? (
@@ -165,15 +189,20 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                           ))}
                         </Group>
                       </Stack>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => controller.removeContextMapping(index)}
-                        aria-label={`Remove ${mapping.key || 'mapping'}`}
-                        disabled={!structuredEditorAvailable}
-                      >
-                        <IconTrashX size={16} />
-                      </ActionIcon>
+                      <Group gap="xs">
+                        <Button variant="default" onClick={() => startEditingMapping(mapping)} disabled={!structuredEditorAvailable}>
+                          Edit
+                        </Button>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() => void controller.removeContextMapping(index)}
+                          aria-label={`Remove ${mapping.key || 'mapping'}`}
+                          disabled={!structuredEditorAvailable}
+                        >
+                          <IconTrashX size={16} />
+                        </ActionIcon>
+                      </Group>
                     </Group>
                   </Card>
                 ))}
@@ -201,49 +230,59 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                       onChange={(event) => setMappingType(event.currentTarget.value)}
                       styles={inputStyles}
                     />
-                    <NativeSelect
-                      label="Destination"
+                    <MultiSelect
+                      label="Destinations"
                       data={[
                         {value: 'QUERY_PIPELINE_CONTEXT', label: 'Query pipeline context'},
                         {value: 'ML_CONTEXT', label: 'ML context'},
                         {value: 'FIELD_ALIASES', label: 'Field aliases'},
                       ]}
-                      value={mappingDestination}
-                      onChange={(event) =>
-                        setMappingDestination(event.currentTarget.value as ContextMappingDestinationAttribute)
-                      }
+                      value={mappingDestinations}
+                      onChange={(value) => setMappingDestinations(value as ContextMappingDestinationAttribute[])}
                       styles={inputStyles}
                     />
                   </Group>
-                  {mappingDestination === 'FIELD_ALIASES' && (
-                    <Group grow align="flex-end">
-                      <TextInput
-                        label="Field alias"
-                        placeholder="my_field"
-                        value={mappingFieldAlias}
-                        onChange={(event) => setMappingFieldAlias(event.currentTarget.value)}
-                        styles={inputStyles}
-                      />
-                      <TextInput
-                        label="Field source"
-                        placeholder="catalog"
-                        value={mappingFieldSource}
-                        onChange={(event) => setMappingFieldSource(event.currentTarget.value)}
-                        styles={inputStyles}
-                      />
-                    </Group>
+                  {usesFieldAliases && (
+                    <Stack gap="xs">
+                      <Group grow align="flex-end">
+                        <TextInput
+                          label="Field alias"
+                          placeholder="price_store_{{contextValue}}"
+                          value={mappingFieldAlias}
+                          onChange={(event) => setMappingFieldAlias(event.currentTarget.value)}
+                          styles={inputStyles}
+                        />
+                        <TextInput
+                          label="Field source"
+                          placeholder="price_dict.{{contextValue}}"
+                          value={mappingFieldSource}
+                          onChange={(event) => setMappingFieldSource(event.currentTarget.value)}
+                          styles={inputStyles}
+                        />
+                      </Group>
+                      <Text size="sm" c="dimmed">
+                        Field alias is the query result alias and can use {'{{contextValue}}'} for dynamic names. Field source is the
+                        indexed field template to resolve and should use {'{{contextValue}}'} where Commerce should inject the shopper
+                        value.
+                      </Text>
+                    </Stack>
                   )}
                   <Group justify="flex-end">
+                    {editingKey ? (
+                      <Button variant="default" onClick={resetBuilder}>
+                        Cancel
+                      </Button>
+                    ) : null}
                     <Button
-                      onClick={addMapping}
+                      onClick={() => void saveMapping()}
                       disabled={
                         !structuredEditorAvailable ||
                         !mappingKey.trim() ||
-                        (mappingDestination === 'FIELD_ALIASES' &&
-                          (!mappingFieldAlias.trim() || !mappingFieldSource.trim()))
+                        !mappingDestinations.length ||
+                        (usesFieldAliases && (!mappingFieldAlias.trim() || !mappingFieldSource.trim()))
                       }
                     >
-                      Add mapping
+                      {editingKey ? 'Update mapping' : 'Add mapping'}
                     </Button>
                   </Group>
                 </Stack>
@@ -256,7 +295,7 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
               <Stack gap={4}>
                 <Text fw={600}>Editor</Text>
                 <Text size="sm" c="dimmed">
-                  Direct edits are applied to the payload that will be sent to the context mappings API.
+                  Direct edits use the list-all response structure and sync creates, updates, and deletions when you save.
                 </Text>
               </Stack>
               <Textarea

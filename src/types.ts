@@ -261,11 +261,7 @@ export interface ContextMappingDefinition extends JsonObject {
   destinations?: ContextMappingDestination[];
 }
 
-export interface ContextMappingsDocument extends JsonObject {
-  mappings?: ContextMappingDefinition[];
-}
-
-export type ContextMappingsDataShape = ContextMappingsDocument | JsonValue[];
+export type ContextMappingsDataShape = ContextMappingDefinition[];
 
 export interface AppStatus {
   type: 'success' | 'error' | 'info';
