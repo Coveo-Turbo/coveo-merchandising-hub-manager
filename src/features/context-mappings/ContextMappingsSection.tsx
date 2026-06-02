@@ -261,9 +261,9 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                         />
                       </Group>
                       <Text size="sm" c="dimmed">
-                        Field alias is the query result alias and can use {'{{contextValue}}'} for dynamic names. Field source is the
-                        indexed field template to resolve and should use {'{{contextValue}}'} where Commerce should inject the shopper
-                        value.
+                        Field alias is the query result alias and can use <code>{'{{contextValue}}'}</code> for dynamic names. Field
+                        source is the indexed field template to resolve and should use <code>{'{{contextValue}}'}</code> where Commerce
+                        should inject the shopper value.
                       </Text>
                     </Stack>
                   )}

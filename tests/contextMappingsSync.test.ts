@@ -47,6 +47,7 @@ describe('contextMappingsSync', () => {
   });
 
   it('validates FIELD_ALIASES requirements and array payloads', () => {
+    expect(validateContextMappings([])).toBeNull();
     expect(validateContextMappings({mappings: []})).toBe('Context mappings JSON must be an array.');
     expect(
       validateContextMappings([

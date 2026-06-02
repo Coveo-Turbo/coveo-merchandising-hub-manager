@@ -7,6 +7,23 @@ export type ContextMappingSyncOperation =
 
 const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
+const areDestinationsEqual = (
+  leftDestinations: ContextMappingDefinition['destinations'] = [],
+  rightDestinations: ContextMappingDefinition['destinations'] = [],
+) =>
+  leftDestinations.length === rightDestinations.length &&
+  leftDestinations.every((destination, index) => {
+    const other = rightDestinations[index];
+    return (
+      destination?.attribute === other?.attribute &&
+      destination?.fieldAlias === other?.fieldAlias &&
+      destination?.fieldSource === other?.fieldSource
+    );
+  });
+
+const areMappingsEqual = (left: ContextMappingDefinition, right: ContextMappingDefinition) =>
+  left.key === right.key && left.type === right.type && areDestinationsEqual(left.destinations, right.destinations);
+
 export const validateContextMappings = (value: unknown) => {
   if (!Array.isArray(value)) {
     return 'Context mappings JSON must be an array.';
@@ -66,7 +83,7 @@ export const buildContextMappingsSyncPlan = (
       continue;
     }
 
-    if (JSON.stringify(currentMapping) !== JSON.stringify(mapping)) {
+    if (!areMappingsEqual(currentMapping, mapping)) {
       operations.push({type: 'update', key, mapping});
     }
   }

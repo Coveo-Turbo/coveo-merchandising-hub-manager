@@ -76,7 +76,11 @@ const parseContextMappingsString = (value: string): {parsed: ContextMappingsData
 
   try {
     const parsed = JSON.parse(value) as ContextMappingsDataShape;
-    return {parsed: Array.isArray(parsed) ? parsed : null, error: validateContextMappings(parsed)};
+    if (!Array.isArray(parsed)) {
+      return {parsed: null, error: 'Context mappings JSON must be an array.'};
+    }
+
+    return {parsed, error: validateContextMappings(parsed)};
   } catch (error) {
     return {parsed: null, error: getErrorMessage(error, 'Invalid JSON.')};
   }
