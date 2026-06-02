@@ -7,19 +7,19 @@ export type ContextMappingSyncOperation =
 
 const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
+const destinationKey = (dest: NonNullable<ContextMappingDefinition['destinations']>[number]) =>
+  `${dest?.attribute ?? ''}|${dest?.fieldAlias ?? ''}|${dest?.fieldSource ?? ''}`;
+
 const areDestinationsEqual = (
   leftDestinations: ContextMappingDefinition['destinations'] = [],
   rightDestinations: ContextMappingDefinition['destinations'] = [],
-) =>
-  leftDestinations.length === rightDestinations.length &&
-  leftDestinations.every((destination, index) => {
-    const other = rightDestinations[index];
-    return (
-      destination?.attribute === other?.attribute &&
-      destination?.fieldAlias === other?.fieldAlias &&
-      destination?.fieldSource === other?.fieldSource
-    );
-  });
+) => {
+  if (leftDestinations.length !== rightDestinations.length) {
+    return false;
+  }
+  const rightKeys = new Set(rightDestinations.map(destinationKey));
+  return leftDestinations.every((destination) => rightKeys.has(destinationKey(destination)));
+};
 
 const areMappingsEqual = (left: ContextMappingDefinition, right: ContextMappingDefinition) =>
   left.key === right.key && left.type === right.type && areDestinationsEqual(left.destinations, right.destinations);

@@ -36,7 +36,9 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
   const [mappingFieldAlias, setMappingFieldAlias] = useState('');
   const [mappingFieldSource, setMappingFieldSource] = useState('');
   const mappingEntries = controller.contextMappingsData ?? [];
-  const structuredEditorAvailable = !controller.contextMappingsString.trim() || Array.isArray(controller.contextMappingsData);
+  const structuredEditorAvailable =
+    !controller.contextMappingsString.trim() ||
+    (Array.isArray(controller.contextMappingsData) && !controller.contextMappingsValidationError);
   const usesFieldAliases = mappingDestinations.includes('FIELD_ALIASES');
 
   const resetBuilder = () => {

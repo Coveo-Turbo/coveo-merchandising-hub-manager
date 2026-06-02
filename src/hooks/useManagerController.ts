@@ -599,8 +599,8 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setLoading(true);
     setStatus(null);
     try {
-      await createContextMapping(session, mapping, transport);
-      const nextMappings = [...contextMappingsData, mapping];
+      const created = await createContextMapping(session, mapping, transport);
+      const nextMappings = [...contextMappingsData, created];
       setContextMappingsBaseline(nextMappings);
       updateContextMappingsEditor(nextMappings);
       setStatus({type: 'success', message: `Created context mapping "${mapping.key || 'mapping'}".`});
@@ -621,9 +621,9 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setLoading(true);
     setStatus(null);
     try {
-      await updateContextMapping(session, key, mapping, transport);
+      const updated = await updateContextMapping(session, key, mapping, transport);
       const nextMappings = contextMappingsData.map((currentMapping) =>
-        currentMapping.key === key ? mapping : currentMapping,
+        currentMapping.key === key ? updated : currentMapping,
       );
       setContextMappingsBaseline(nextMappings);
       updateContextMappingsEditor(nextMappings);
