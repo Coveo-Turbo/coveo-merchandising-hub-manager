@@ -3,15 +3,17 @@ import {fireEvent, render, screen} from '@testing-library/react';
 import {describe, expect, it, vi} from 'vitest';
 import {ContextMappingsSection} from '../src/features/context-mappings/ContextMappingsSection';
 import type {ManagerController} from '../src/hooks/useManagerController';
-import type {SessionContext} from '../src/types';
+import type {ContextMappingsDocument, SessionContext} from '../src/types';
 
 vi.mock('@coveord/plasma-mantine', () => ({
+  ActionIcon: ({children, ...props}: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
   Alert: ({children, title}: {children: ReactNode; title?: string}) => (
     <div>
       {title ? <div>{title}</div> : null}
       {children}
     </div>
   ),
+  Badge: ({children}: {children: ReactNode}) => <span>{children}</span>,
   Button: ({children, ...props}: ButtonHTMLAttributes<HTMLButtonElement> & {loading?: boolean; leftSection?: ReactNode}) => {
     const {loading, leftSection, ...buttonProps} = props;
     void loading;
@@ -27,10 +29,75 @@ vi.mock('@coveord/plasma-mantine', () => ({
       {description ? <p>{description}</p> : null}
     </div>
   ),
+  NativeSelect: ({
+    value,
+    onChange,
+    label,
+  }: {
+    value?: string;
+    label?: string;
+    onChange?: (event: {currentTarget: {value: string}}) => void;
+  }) => (
+    <label>
+      {label}
+      <select value={value} onChange={(event) => onChange?.({currentTarget: {value: event.currentTarget.value}})}>
+        <option value="STRING">String</option>
+        <option value="NUMBER">Number</option>
+        <option value="BOOLEAN">Boolean</option>
+        <option value="PRODUCT_LIST">Product list</option>
+      </select>
+    </label>
+  ),
   Stack: ({children}: {children: ReactNode}) => <div>{children}</div>,
+  TagsInput: ({
+    value,
+    onChange,
+    label,
+  }: {
+    value?: string[];
+    label?: string;
+    onChange?: (value: string[]) => void;
+  }) => (
+    <label>
+      {label}
+      <input
+        aria-label={label}
+        value={(value ?? []).join(',')}
+        onChange={(event) =>
+          onChange?.(
+            event.currentTarget.value
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter(Boolean),
+          )
+        }
+      />
+    </label>
+  ),
   Text: ({children}: {children: ReactNode}) => <span>{children}</span>,
   Textarea: ({value, onChange}: {value?: string; onChange?: (event: {currentTarget: {value: string}}) => void}) => (
     <textarea value={value} onChange={(event) => onChange?.({currentTarget: {value: event.currentTarget.value}})} />
+  ),
+  TextInput: ({
+    value,
+    onChange,
+    label,
+    placeholder,
+  }: {
+    value?: string;
+    label?: string;
+    placeholder?: string;
+    onChange?: (event: {currentTarget: {value: string}}) => void;
+  }) => (
+    <label>
+      {label}
+      <input
+        aria-label={label || placeholder}
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange?.({currentTarget: {value: event.currentTarget.value}})}
+      />
+    </label>
   ),
 }));
 
@@ -39,6 +106,7 @@ vi.mock('@coveord/plasma-react-icons', () => ({
   IconDownload: () => <span />,
   IconFileUpload: () => <span />,
   IconRefreshAlert: () => <span />,
+  IconTrashX: () => <span />,
 }));
 
 const session: SessionContext = {
@@ -55,6 +123,7 @@ const createController = (overrides: Partial<ManagerController> = {}): ManagerCo
     runtime: 'standalone',
     session,
     loading: false,
+    contextMappingsData: {mappings: []} as ContextMappingsDocument,
     contextMappingsString: '{invalid json',
     contextMappingsValidationError: 'Expected property name or \'}\' in JSON at position 1',
     fetchContextMappings: vi.fn(),
@@ -62,6 +131,8 @@ const createController = (overrides: Partial<ManagerController> = {}): ManagerCo
     loadContextMappingsFile: vi.fn(),
     saveContextMappings: vi.fn(),
     setContextMappingsString: vi.fn(),
+    addContextMapping: vi.fn(),
+    removeContextMapping: vi.fn(),
     ...overrides,
   }) as ManagerController;
 
@@ -76,14 +147,40 @@ describe('ContextMappingsSection', () => {
 
   it('passes textarea edits back to the controller', () => {
     const controller = createController({
+      contextMappingsData: {mappings: []},
       contextMappingsString: '{}',
       contextMappingsValidationError: null,
     });
 
     render(<ContextMappingsSection controller={controller} />);
 
-    fireEvent.change(screen.getByRole('textbox'), {target: {value: '{"mapping":"locale"}'}});
+    fireEvent.change(screen.getByDisplayValue('{}'), {target: {value: '{"mapping":"locale"}'}});
 
     expect(controller.setContextMappingsString).toHaveBeenCalledWith('{"mapping":"locale"}');
+  });
+
+  it('lets admins add and remove mappings with the structured builder', () => {
+    const controller = createController({
+      contextMappingsData: {
+        mappings: [{key: 'locale', type: 'STRING', destinations: ['QUERY_PIPELINE_CONTEXT']}],
+      },
+      contextMappingsString: JSON.stringify({mappings: [{key: 'locale', type: 'STRING', destinations: ['QUERY_PIPELINE_CONTEXT']}]}, null, 2),
+      contextMappingsValidationError: null,
+    });
+
+    render(<ContextMappingsSection controller={controller} />);
+
+    fireEvent.change(screen.getByLabelText('Key'), {target: {value: 'storeId'}});
+    fireEvent.change(screen.getByLabelText('Destinations'), {target: {value: 'ML_CONTEXT, QUERY_PIPELINE_CONTEXT'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Add mapping'}));
+
+    expect(controller.addContextMapping).toHaveBeenCalledWith({
+      key: 'storeId',
+      type: 'STRING',
+      destinations: ['ML_CONTEXT', 'QUERY_PIPELINE_CONTEXT'],
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Remove locale'}));
+    expect(controller.removeContextMapping).toHaveBeenCalledWith(0);
   });
 });

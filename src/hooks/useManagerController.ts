@@ -27,6 +27,8 @@ import {SAMPLE_CONFIGS} from '../services/sampleConfigs';
 import type {
   AppStatus,
   BulkCreateRulesResult,
+  ContextMappingDefinition,
+  ContextMappingsDocument,
   CommerceTroubleshootDeployFormState,
   CommerceTroubleshootDeployResult,
   ConfigState,
@@ -76,6 +78,9 @@ const parseContextMappingsString = (value: string): {parsed: ContextMappingsData
     return {parsed: null, error: getErrorMessage(error, 'Invalid JSON.')};
   }
 };
+
+const isContextMappingsDocument = (value: ContextMappingsDataShape | null): value is ContextMappingsDocument =>
+  Boolean(value) && !Array.isArray(value) && typeof value === 'object';
 
 const createDefaultSession = (config: ConfigState): SessionContext => ({
   ...config,
@@ -570,6 +575,31 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     const {parsed, error} = parseContextMappingsString(nextValue);
     setContextMappingsData(parsed);
     setContextMappingsValidationError(error);
+  };
+
+  const updateContextMappingsEditor = (nextValue: ContextMappingsDataShape) => {
+    setContextMappingsData(nextValue);
+    setContextMappingsStringState(JSON.stringify(nextValue, null, 2));
+    setContextMappingsValidationError(null);
+  };
+
+  const addContextMapping = (mapping: ContextMappingDefinition) => {
+    const nextDocument: ContextMappingsDocument = isContextMappingsDocument(contextMappingsData) ? {...contextMappingsData} : {};
+    updateContextMappingsEditor({
+      ...nextDocument,
+      mappings: [...(nextDocument.mappings ?? []), mapping],
+    });
+  };
+
+  const removeContextMapping = (index: number) => {
+    if (!isContextMappingsDocument(contextMappingsData) || !contextMappingsData.mappings) {
+      return;
+    }
+
+    updateContextMappingsEditor({
+      ...contextMappingsData,
+      mappings: contextMappingsData.mappings.filter((_, currentIndex) => currentIndex !== index),
+    });
   };
 
   const fetchContextMappings = async () => {
@@ -1086,6 +1116,8 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     fetchContextMappings,
     saveContextMappings,
     setContextMappingsString,
+    addContextMapping,
+    removeContextMapping,
     loadContextMappingsFile,
     exportContextMappings,
     copySharedSettings,

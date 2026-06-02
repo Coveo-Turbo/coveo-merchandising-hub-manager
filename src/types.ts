@@ -247,7 +247,17 @@ export interface GlobalConfigDataShape extends QueryConfigData {
   rules?: JsonValue;
 }
 
-export type ContextMappingsDataShape = JsonObject | JsonValue[];
+export interface ContextMappingDefinition extends JsonObject {
+  key?: string;
+  type?: string;
+  destinations?: string[];
+}
+
+export interface ContextMappingsDocument extends JsonObject {
+  mappings?: ContextMappingDefinition[];
+}
+
+export type ContextMappingsDataShape = ContextMappingsDocument | JsonValue[];
 
 export interface AppStatus {
   type: 'success' | 'error' | 'info';

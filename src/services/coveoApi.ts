@@ -355,9 +355,7 @@ export const updateGlobalRecommendationsConfig = async (
 export const getContextMappings = async (session: SessionContext, transport?: ApiTransport) =>
   requestJson<ContextMappingsDataShape>(
     session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/context-mappings?trackingId=${encodeURIComponent(
-      session.trackingId,
-    )}`,
+    `/rest/organizations/${session.organizationId}/commerce/v2/contextMappings/${encodeURIComponent(session.trackingId)}`,
     {transport, cache: 'no-store'},
   );
 
@@ -368,9 +366,7 @@ export const updateContextMappings = async (
 ) =>
   postJson<ContextMappingsDataShape>(
     session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/context-mappings?trackingId=${encodeURIComponent(
-      session.trackingId,
-    )}`,
+    `/rest/organizations/${session.organizationId}/commerce/v2/contextMappings/${encodeURIComponent(session.trackingId)}`,
     data,
     transport,
     'PUT',

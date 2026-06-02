@@ -26,7 +26,7 @@ describe('coveoApi context mappings', () => {
 
     const fetchArgs = request.mock.calls[0][0];
     expect(fetchArgs.url).toBe(
-      'https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/configurations/context-mappings?trackingId=storefront',
+      'https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/contextMappings/storefront',
     );
     expect(fetchArgs.method).toBeUndefined();
     expect(fetchArgs.body).toBeUndefined();
@@ -47,7 +47,7 @@ describe('coveoApi context mappings', () => {
 
     const updateArgs = request.mock.calls[0][0];
     expect(updateArgs.url).toBe(
-      'https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/configurations/context-mappings?trackingId=storefront',
+      'https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/contextMappings/storefront',
     );
     expect(updateArgs.method).toBe('PUT');
     expect(updateArgs.body).toBe(JSON.stringify(payload));
