@@ -2,7 +2,11 @@ import {useEffect, useState} from 'react';
 import type {AppSection} from '../types';
 
 const isSection = (value: string | null): value is AppSection =>
-  value === 'listings' || value === 'global-config' || value === 'rules' || value === 'maintenance';
+  value === 'listings' ||
+  value === 'global-config' ||
+  value === 'context-mappings' ||
+  value === 'rules' ||
+  value === 'maintenance';
 
 const readSection = (embedded: boolean): AppSection => {
   const params = new URLSearchParams(window.location.search);

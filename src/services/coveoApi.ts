@@ -3,6 +3,7 @@ import {createBrowserApiTransport} from '../core/apiTransport';
 import type {
   BulkCreateRulesResult,
   CommercePageModelPublicListingPageResponseModel,
+  ContextMappingsDataShape,
   DetailedListingPageResponseModel,
   GlobalConfigDataShape,
   JsonObject,
@@ -344,6 +345,30 @@ export const updateGlobalRecommendationsConfig = async (
   postJson<GlobalConfigDataShape>(
     session,
     `/rest/organizations/${session.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    data,
+    transport,
+    'PUT',
+  );
+
+export const getContextMappings = async (session: SessionContext, transport?: ApiTransport) =>
+  requestJson<ContextMappingsDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/context-mappings?trackingId=${encodeURIComponent(
+      session.trackingId,
+    )}`,
+    {transport, cache: 'no-store'},
+  );
+
+export const updateContextMappings = async (
+  session: SessionContext,
+  data: ContextMappingsDataShape,
+  transport?: ApiTransport,
+) =>
+  postJson<ContextMappingsDataShape>(
+    session,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/context-mappings?trackingId=${encodeURIComponent(
       session.trackingId,
     )}`,
     data,

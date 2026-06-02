@@ -32,6 +32,7 @@ import {
   IconX,
 } from '@coveord/plasma-react-icons';
 import type {ApiTransport, ContextResolver, SessionStore} from './core/contracts';
+import {ContextMappingsSection} from './features/context-mappings/ContextMappingsSection';
 import {GlobalConfigSection} from './features/global-config/GlobalConfigSection';
 import {ListingsSection} from './features/listings/ListingsSection';
 import {MaintenanceSection} from './features/maintenance/MaintenanceSection';
@@ -52,6 +53,7 @@ export interface AppProps {
 const navItems: Array<{id: AppSection; label: string; icon: typeof IconLayoutList}> = [
   {id: 'listings', label: 'Listings', icon: IconLayoutList},
   {id: 'global-config', label: 'Global Config', icon: IconCode},
+  {id: 'context-mappings', label: 'Context Mappings', icon: IconRefreshAlert},
   {id: 'rules', label: 'Rules', icon: IconSparkles},
   {id: 'maintenance', label: 'Maintenance', icon: IconSettings},
 ];
@@ -60,6 +62,8 @@ const renderSection = (section: AppSection, controller: ReturnType<typeof useMan
   switch (section) {
     case 'global-config':
       return <GlobalConfigSection controller={controller} />;
+    case 'context-mappings':
+      return <ContextMappingsSection controller={controller} />;
     case 'rules':
       return <RulesSection controller={controller} />;
     case 'maintenance':
@@ -417,7 +421,9 @@ const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEm
   const controller = useManagerController({runtime, transport, contextResolver, sessionStore});
   const [section, setSection] = useUrlSection(runtime === 'extension');
   const lastAutoLoadedGlobalConfigRef = useRef<string | null>(null);
+  const lastAutoLoadedContextMappingsRef = useRef<string | null>(null);
   const fetchGlobalConfigRef = useRef(controller.fetchGlobalConfig);
+  const fetchContextMappingsRef = useRef(controller.fetchContextMappings);
   const globalConfigType = controller.globalConfigType;
   const sessionOrganizationId = controller.session?.organizationId;
   const sessionTrackingId = controller.session?.trackingId;
@@ -427,6 +433,10 @@ const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEm
   useEffect(() => {
     fetchGlobalConfigRef.current = controller.fetchGlobalConfig;
   }, [controller.fetchGlobalConfig]);
+
+  useEffect(() => {
+    fetchContextMappingsRef.current = controller.fetchContextMappings;
+  }, [controller.fetchContextMappings]);
 
   useEffect(() => {
     if (
@@ -462,6 +472,28 @@ const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEm
     sessionAccessToken,
     sessionPlatformUrl,
   ]);
+
+  useEffect(() => {
+    if (
+      section !== 'context-mappings' ||
+      !sessionOrganizationId ||
+      !sessionTrackingId ||
+      !sessionAccessToken ||
+      !sessionPlatformUrl
+    ) {
+      lastAutoLoadedContextMappingsRef.current = null;
+      return;
+    }
+
+    const autoLoadKey = [sessionOrganizationId, sessionTrackingId, sessionAccessToken, sessionPlatformUrl].join('::');
+
+    if (lastAutoLoadedContextMappingsRef.current === autoLoadKey) {
+      return;
+    }
+
+    lastAutoLoadedContextMappingsRef.current = autoLoadKey;
+    void fetchContextMappingsRef.current();
+  }, [section, sessionOrganizationId, sessionTrackingId, sessionAccessToken, sessionPlatformUrl]);
 
   return runtime === 'extension' ? (
     <EmbeddedLayout controller={controller} section={section} setSection={setSection} onExitEmbedded={onExitEmbedded} />
