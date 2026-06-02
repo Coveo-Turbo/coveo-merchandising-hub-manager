@@ -33,47 +33,25 @@ vi.mock('@coveord/plasma-mantine', () => ({
     value,
     onChange,
     label,
+    data,
   }: {
     value?: string;
     label?: string;
+    data?: Array<{value: string; label: string}>;
     onChange?: (event: {currentTarget: {value: string}}) => void;
   }) => (
     <label>
       {label}
       <select value={value} onChange={(event) => onChange?.({currentTarget: {value: event.currentTarget.value}})}>
-        <option value="STRING">String</option>
-        <option value="NUMBER">Number</option>
-        <option value="BOOLEAN">Boolean</option>
-        <option value="PRODUCT_LIST">Product list</option>
+        {(data ?? []).map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
     </label>
   ),
   Stack: ({children}: {children: ReactNode}) => <div>{children}</div>,
-  TagsInput: ({
-    value,
-    onChange,
-    label,
-  }: {
-    value?: string[];
-    label?: string;
-    onChange?: (value: string[]) => void;
-  }) => (
-    <label>
-      {label}
-      <input
-        aria-label={label}
-        value={(value ?? []).join(',')}
-        onChange={(event) =>
-          onChange?.(
-            event.currentTarget.value
-              .split(',')
-              .map((entry) => entry.trim())
-              .filter(Boolean),
-          )
-        }
-      />
-    </label>
-  ),
   Text: ({children}: {children: ReactNode}) => <span>{children}</span>,
   Textarea: ({value, onChange}: {value?: string; onChange?: (event: {currentTarget: {value: string}}) => void}) => (
     <textarea value={value} onChange={(event) => onChange?.({currentTarget: {value: event.currentTarget.value}})} />
@@ -162,25 +140,54 @@ describe('ContextMappingsSection', () => {
   it('lets admins add and remove mappings with the structured builder', () => {
     const controller = createController({
       contextMappingsData: {
-        mappings: [{key: 'locale', type: 'STRING', destinations: ['QUERY_PIPELINE_CONTEXT']}],
+        mappings: [{key: 'locale', type: 'STRING', destinations: [{attribute: 'QUERY_PIPELINE_CONTEXT'}]}],
       },
-      contextMappingsString: JSON.stringify({mappings: [{key: 'locale', type: 'STRING', destinations: ['QUERY_PIPELINE_CONTEXT']}]}, null, 2),
+      contextMappingsString: JSON.stringify(
+        {mappings: [{key: 'locale', type: 'STRING', destinations: [{attribute: 'QUERY_PIPELINE_CONTEXT'}]}]},
+        null,
+        2,
+      ),
       contextMappingsValidationError: null,
     });
 
     render(<ContextMappingsSection controller={controller} />);
 
     fireEvent.change(screen.getByLabelText('Key'), {target: {value: 'storeId'}});
-    fireEvent.change(screen.getByLabelText('Destinations'), {target: {value: 'ML_CONTEXT, QUERY_PIPELINE_CONTEXT'}});
+    fireEvent.change(screen.getByLabelText('Destination'), {target: {value: 'ML_CONTEXT'}});
     fireEvent.click(screen.getByRole('button', {name: 'Add mapping'}));
 
     expect(controller.addContextMapping).toHaveBeenCalledWith({
       key: 'storeId',
       type: 'STRING',
-      destinations: ['ML_CONTEXT', 'QUERY_PIPELINE_CONTEXT'],
+      destinations: [{attribute: 'ML_CONTEXT'}],
     });
 
     fireEvent.click(screen.getByRole('button', {name: 'Remove locale'}));
     expect(controller.removeContextMapping).toHaveBeenCalledWith(0);
+  });
+
+  it('requires field alias details for FIELD_ALIASES mappings', () => {
+    const controller = createController({
+      contextMappingsData: {mappings: []},
+      contextMappingsString: JSON.stringify({mappings: []}, null, 2),
+      contextMappingsValidationError: null,
+    });
+
+    render(<ContextMappingsSection controller={controller} />);
+
+    fireEvent.change(screen.getByLabelText('Key'), {target: {value: 'brand'}});
+    fireEvent.change(screen.getByLabelText('Destination'), {target: {value: 'FIELD_ALIASES'}});
+
+    expect((screen.getByRole('button', {name: 'Add mapping'}) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Field alias'), {target: {value: 'ec_brand'}});
+    fireEvent.change(screen.getByLabelText('Field source'), {target: {value: 'catalog'}});
+    fireEvent.click(screen.getByRole('button', {name: 'Add mapping'}));
+
+    expect(controller.addContextMapping).toHaveBeenCalledWith({
+      key: 'brand',
+      type: 'STRING',
+      destinations: [{attribute: 'FIELD_ALIASES', fieldAlias: 'ec_brand', fieldSource: 'catalog'}],
+    });
   });
 });

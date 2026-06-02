@@ -10,14 +10,13 @@ import {
   Header,
   NativeSelect,
   Stack,
-  TagsInput,
   Text,
   Textarea,
   TextInput,
 } from '@coveord/plasma-mantine';
 import {IconAlertTriangle, IconDownload, IconFileUpload, IconRefreshAlert, IconTrashX} from '@coveord/plasma-react-icons';
 import type {ManagerController} from '../../hooks/useManagerController';
-import type {ContextMappingsDocument} from '../../types';
+import type {ContextMappingDestinationAttribute, ContextMappingsDocument} from '../../types';
 import {embeddedInputStyles} from '../../ui/embeddedControlStyles';
 
 interface ContextMappingsSectionProps {
@@ -29,7 +28,9 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
   const inputStyles = isEmbedded ? embeddedInputStyles : undefined;
   const [mappingKey, setMappingKey] = useState('');
   const [mappingType, setMappingType] = useState('STRING');
-  const [mappingDestinations, setMappingDestinations] = useState<string[]>([]);
+  const [mappingDestination, setMappingDestination] = useState<ContextMappingDestinationAttribute>('QUERY_PIPELINE_CONTEXT');
+  const [mappingFieldAlias, setMappingFieldAlias] = useState('');
+  const [mappingFieldSource, setMappingFieldSource] = useState('');
   const contextMappingsDocument =
     controller.contextMappingsData &&
     !Array.isArray(controller.contextMappingsData) &&
@@ -40,19 +41,27 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
   const structuredEditorAvailable = !controller.contextMappingsString.trim() || Boolean(contextMappingsDocument);
   const addMapping = () => {
     const key = mappingKey.trim();
-    const destinations = mappingDestinations.map((value) => value.trim()).filter(Boolean);
-    if (!key || destinations.length === 0) {
+    const fieldAlias = mappingFieldAlias.trim();
+    const fieldSource = mappingFieldSource.trim();
+    if (!key || (mappingDestination === 'FIELD_ALIASES' && (!fieldAlias || !fieldSource))) {
       return;
     }
 
     controller.addContextMapping({
       key,
       type: mappingType,
-      destinations,
+      destinations: [
+        {
+          attribute: mappingDestination,
+          ...(mappingDestination === 'FIELD_ALIASES' ? {fieldAlias, fieldSource} : {}),
+        },
+      ],
     });
     setMappingKey('');
     setMappingType('STRING');
-    setMappingDestinations([]);
+    setMappingDestination('QUERY_PIPELINE_CONTEXT');
+    setMappingFieldAlias('');
+    setMappingFieldSource('');
   };
 
   return (
@@ -144,9 +153,15 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                         </Group>
                         <Group gap="xs">
                           {(mapping.destinations ?? []).map((destination, destinationIndex) => (
-                            <Badge key={`mapping-${index}-destination-${destinationIndex}`} variant="light">
-                              {destination}
-                            </Badge>
+                            <Group key={`mapping-${index}-destination-${destinationIndex}`} gap="xs">
+                              <Badge variant="light">{destination.attribute || 'Unknown destination'}</Badge>
+                              {destination.attribute === 'FIELD_ALIASES' &&
+                              (destination.fieldAlias || destination.fieldSource) ? (
+                                <Text size="sm" c="dimmed">
+                                  {[destination.fieldAlias, destination.fieldSource].filter(Boolean).join(' • ')}
+                                </Text>
+                              ) : null}
+                            </Group>
                           ))}
                         </Group>
                       </Stack>
@@ -186,18 +201,47 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                       onChange={(event) => setMappingType(event.currentTarget.value)}
                       styles={inputStyles}
                     />
+                    <NativeSelect
+                      label="Destination"
+                      data={[
+                        {value: 'QUERY_PIPELINE_CONTEXT', label: 'Query pipeline context'},
+                        {value: 'ML_CONTEXT', label: 'ML context'},
+                        {value: 'FIELD_ALIASES', label: 'Field aliases'},
+                      ]}
+                      value={mappingDestination}
+                      onChange={(event) =>
+                        setMappingDestination(event.currentTarget.value as ContextMappingDestinationAttribute)
+                      }
+                      styles={inputStyles}
+                    />
                   </Group>
-                  <TagsInput
-                    label="Destinations"
-                    placeholder="Add destinations such as QUERY_PIPELINE_CONTEXT"
-                    value={mappingDestinations}
-                    onChange={setMappingDestinations}
-                    styles={inputStyles}
-                  />
+                  {mappingDestination === 'FIELD_ALIASES' && (
+                    <Group grow align="flex-end">
+                      <TextInput
+                        label="Field alias"
+                        placeholder="my_field"
+                        value={mappingFieldAlias}
+                        onChange={(event) => setMappingFieldAlias(event.currentTarget.value)}
+                        styles={inputStyles}
+                      />
+                      <TextInput
+                        label="Field source"
+                        placeholder="catalog"
+                        value={mappingFieldSource}
+                        onChange={(event) => setMappingFieldSource(event.currentTarget.value)}
+                        styles={inputStyles}
+                      />
+                    </Group>
+                  )}
                   <Group justify="flex-end">
                     <Button
                       onClick={addMapping}
-                      disabled={!structuredEditorAvailable || !mappingKey.trim() || mappingDestinations.length === 0}
+                      disabled={
+                        !structuredEditorAvailable ||
+                        !mappingKey.trim() ||
+                        (mappingDestination === 'FIELD_ALIASES' &&
+                          (!mappingFieldAlias.trim() || !mappingFieldSource.trim()))
+                      }
                     >
                       Add mapping
                     </Button>

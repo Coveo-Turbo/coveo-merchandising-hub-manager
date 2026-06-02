@@ -247,10 +247,18 @@ export interface GlobalConfigDataShape extends QueryConfigData {
   rules?: JsonValue;
 }
 
+export type ContextMappingDestinationAttribute = 'QUERY_PIPELINE_CONTEXT' | 'ML_CONTEXT' | 'FIELD_ALIASES';
+
+export interface ContextMappingDestination extends JsonObject {
+  attribute?: string;
+  fieldAlias?: string;
+  fieldSource?: string;
+}
+
 export interface ContextMappingDefinition extends JsonObject {
   key?: string;
   type?: string;
-  destinations?: string[];
+  destinations?: ContextMappingDestination[];
 }
 
 export interface ContextMappingsDocument extends JsonObject {
