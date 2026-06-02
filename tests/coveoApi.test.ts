@@ -1,7 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import {getContextMappings, updateContextMappings} from '../src/services/coveoApi';
 import type {ApiTransport} from '../src/core/contracts';
-import type {SessionContext} from '../src/types';
+import type {ContextMappingsDocument, SessionContext} from '../src/types';
 
 const session: SessionContext = {
   organizationId: 'my-org',
@@ -14,17 +14,16 @@ const session: SessionContext = {
 
 describe('coveoApi context mappings', () => {
   it('fetches context mappings for the active organization and tracking ID', async () => {
+    const payload: ContextMappingsDocument = {
+      mappings: [{key: 'language', type: 'STRING', destinations: [{attribute: 'QUERY_PIPELINE_CONTEXT'}]}],
+    };
     const request = vi.fn().mockResolvedValue({
       ok: true,
-      body: JSON.stringify({
-        mappings: [{key: 'language', type: 'STRING', destinations: [{attribute: 'QUERY_PIPELINE_CONTEXT'}]}],
-      }),
+      body: JSON.stringify(payload),
     });
     const transport: ApiTransport = {request};
 
-    await expect(getContextMappings(session, transport)).resolves.toEqual({
-      mappings: [{key: 'language', type: 'STRING', destinations: [{attribute: 'QUERY_PIPELINE_CONTEXT'}]}],
-    });
+    await expect(getContextMappings(session, transport)).resolves.toEqual(payload);
 
     const fetchArgs = request.mock.calls[0][0];
     expect(fetchArgs.url).toBe(
@@ -38,14 +37,14 @@ describe('coveoApi context mappings', () => {
   });
 
   it('updates context mappings with a PUT request', async () => {
+    const payload: ContextMappingsDocument = {
+      mappings: [{key: 'device', type: 'STRING', destinations: [{attribute: 'ML_CONTEXT'}]}],
+    };
     const request = vi.fn().mockResolvedValue({
       ok: true,
-      body: JSON.stringify({
-        mappings: [{key: 'device', type: 'STRING', destinations: [{attribute: 'ML_CONTEXT'}]}],
-      }),
+      body: JSON.stringify(payload),
     });
     const transport: ApiTransport = {request};
-    const payload = {mappings: [{key: 'device', type: 'STRING', destinations: [{attribute: 'ML_CONTEXT'}]}]};
 
     await expect(updateContextMappings(session, payload, transport)).resolves.toEqual(payload);
 

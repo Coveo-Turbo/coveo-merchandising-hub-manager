@@ -250,7 +250,7 @@ export interface GlobalConfigDataShape extends QueryConfigData {
 export type ContextMappingDestinationAttribute = 'QUERY_PIPELINE_CONTEXT' | 'ML_CONTEXT' | 'FIELD_ALIASES';
 
 export interface ContextMappingDestination extends JsonObject {
-  attribute?: string;
+  attribute?: ContextMappingDestinationAttribute;
   fieldAlias?: string;
   fieldSource?: string;
 }

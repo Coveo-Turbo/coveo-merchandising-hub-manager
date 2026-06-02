@@ -154,7 +154,7 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                         <Group gap="xs">
                           {(mapping.destinations ?? []).map((destination, destinationIndex) => (
                             <Group key={`mapping-${index}-destination-${destinationIndex}`} gap="xs">
-                              <Badge variant="light">{destination.attribute || 'Unknown destination'}</Badge>
+                              <Badge variant="light">{destination.attribute || 'Unsupported destination in JSON'}</Badge>
                               {destination.attribute === 'FIELD_ALIASES' &&
                               (destination.fieldAlias || destination.fieldSource) ? (
                                 <Text size="sm" c="dimmed">
