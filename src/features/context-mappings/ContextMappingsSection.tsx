@@ -135,7 +135,7 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
 
               <Stack gap="xs">
                 {mappingEntries.map((mapping, index) => (
-                  <Card key={`${mapping.key || 'mapping'}-${index}`} withBorder radius="sm" padding="sm">
+                  <Card key={`mapping-${index}`} withBorder radius="sm" padding="sm">
                     <Group justify="space-between" align="flex-start">
                       <Stack gap={4}>
                         <Group gap="xs">
@@ -143,8 +143,8 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                           {mapping.type ? <Badge variant="outline">{mapping.type}</Badge> : null}
                         </Group>
                         <Group gap="xs">
-                          {(mapping.destinations ?? []).map((destination) => (
-                            <Badge key={`${mapping.key || 'mapping'}-${destination}`} variant="light">
+                          {(mapping.destinations ?? []).map((destination, destinationIndex) => (
+                            <Badge key={`mapping-${index}-destination-${destinationIndex}`} variant="light">
                               {destination}
                             </Badge>
                           ))}
@@ -197,7 +197,7 @@ export const ContextMappingsSection = ({controller}: ContextMappingsSectionProps
                   <Group justify="flex-end">
                     <Button
                       onClick={addMapping}
-                      disabled={!structuredEditorAvailable || !mappingKey.trim() || mappingDestinations.every((value) => !value.trim())}
+                      disabled={!structuredEditorAvailable || !mappingKey.trim() || mappingDestinations.length === 0}
                     >
                       Add mapping
                     </Button>
