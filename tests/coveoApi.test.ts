@@ -1,7 +1,19 @@
 import {describe, expect, it, vi} from 'vitest';
-import {createContextMapping, deleteContextMapping, getContextMappings, updateContextMapping} from '../src/services/coveoApi';
+import {
+  createContextMapping,
+  createGlobalQueryConfig,
+  deleteContextMapping,
+  getContextMappings,
+  getGlobalQueryConfig,
+  updateContextMapping,
+  updateGlobalQueryConfig,
+} from '../src/services/coveoApi';
 import type {ApiTransport} from '../src/core/contracts';
-import type {ContextMappingDefinition, SessionContext} from '../src/types';
+import type {
+  CommerceQueryConfigurationRequestModel,
+  ContextMappingDefinition,
+  SessionContext,
+} from '../src/types';
 
 const session: SessionContext = {
   organizationId: 'my-org',
@@ -97,5 +109,85 @@ describe('coveoApi context mappings', () => {
     );
     expect(deleteArgs.method).toBe('DELETE');
     expect(deleteArgs.body).toBeUndefined();
+  });
+});
+
+describe('coveoApi query configurations', () => {
+  it('fetches the global query configuration for a solution through the unified endpoint', async () => {
+    const payload = {
+      trackingId: 'storefront',
+      solutionType: 'search',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 24,
+        additionalFields: ['ec_brand'],
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      body: JSON.stringify(payload),
+    });
+    const transport: ApiTransport = {request};
+
+    await expect(getGlobalQueryConfig(session, 'search', transport)).resolves.toEqual(payload);
+
+    const fetchArgs = request.mock.calls[0][0];
+    expect(fetchArgs.url).toBe(
+      'https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/configurations/query?trackingId=storefront&solutionType=search&isGlobal=true',
+    );
+    expect(fetchArgs.method).toBeUndefined();
+    expect(fetchArgs.body).toBeUndefined();
+  });
+
+  it('creates the first global query configuration with POST', async () => {
+    const payload: CommerceQueryConfigurationRequestModel = {
+      trackingId: 'storefront',
+      solutionType: 'listing',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 24,
+        additionalFields: ['ec_brand'],
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      body: JSON.stringify(payload),
+    });
+    const transport: ApiTransport = {request};
+
+    await expect(createGlobalQueryConfig(session, payload, transport)).resolves.toEqual(payload);
+
+    const createArgs = request.mock.calls[0][0];
+    expect(createArgs.url).toBe('https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/configurations/query');
+    expect(createArgs.method).toBe('POST');
+    expect(createArgs.body).toBe(JSON.stringify(payload));
+    expect(createArgs.headers['Content-Type']).toBe('application/json');
+  });
+
+  it('updates an existing global query configuration with PUT', async () => {
+    const payload: CommerceQueryConfigurationRequestModel = {
+      trackingId: 'storefront',
+      solutionType: 'recommendation',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 5,
+        additionalFields: ['ec_brand'],
+      },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      body: JSON.stringify(payload),
+    });
+    const transport: ApiTransport = {request};
+
+    await expect(updateGlobalQueryConfig(session, payload, transport)).resolves.toEqual(payload);
+
+    const updateArgs = request.mock.calls[0][0];
+    expect(updateArgs.url).toBe('https://platform.cloud.coveo.com/rest/organizations/my-org/commerce/v2/configurations/query');
+    expect(updateArgs.method).toBe('PUT');
+    expect(updateArgs.body).toBe(JSON.stringify(payload));
+    expect(updateArgs.headers['Content-Type']).toBe('application/json');
   });
 });

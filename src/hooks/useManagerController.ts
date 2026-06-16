@@ -7,21 +7,18 @@ import {
   bulkDeleteListings,
   bulkUpdateListings,
   createContextMapping,
+  createGlobalQueryConfig,
   deleteContextMapping,
   createGlobalProductSuggestConfig,
   fetchAllListings,
   fetchAllRules,
   fetchTrackingIdsFromCatalogMappings,
   getContextMappings,
-  getGlobalListingConfig,
   getGlobalProductSuggestConfig,
-  getGlobalRecommendationsConfig,
-  getGlobalSearchConfig,
+  getGlobalQueryConfig,
   updateContextMapping,
-  updateGlobalListingConfig,
   updateGlobalProductSuggestConfig,
-  updateGlobalRecommendationsConfig,
-  updateGlobalSearchConfig,
+  updateGlobalQueryConfig,
 } from '../services/coveoApi';
 import {enhanceListingWithAI} from '../services/geminiService';
 import {deployCommerceTroubleshootConsole as deployCommerceTroubleshootConsoleRequest} from '../services/commerceTroubleshootConsoleService';
@@ -30,12 +27,15 @@ import {buildContextMappingsSyncPlan, validateContextMappings} from '../features
 import type {
   AppStatus,
   BulkCreateRulesResult,
+  CommerceQueryConfigurationRequestModel,
+  CommerceQueryConfigurationResponseModel,
   ContextMappingDefinition,
   CommerceTroubleshootDeployFormState,
   CommerceTroubleshootDeployResult,
   ConfigState,
   ContextMappingsDataShape,
   CsvRow,
+  GlobalConfigEditorData,
   GlobalConfigDataShape,
   GlobalConfigType,
   JsonObject,
@@ -43,6 +43,7 @@ import type {
   MerchandisingHubRulePayload,
   PublicListingPageRequestModel,
   QueryConfigData,
+  QueryConfigSolutionType,
   RuleImportModel,
   SessionContext,
   SharedSettings,
@@ -92,14 +93,62 @@ const createDefaultSession = (config: ConfigState): SessionContext => ({
   source: 'manual',
 });
 
-const defaultGlobalSearchConfig = (): GlobalConfigDataShape => ({
-  queryConfiguration: {
-    perPage: 24,
-    additionalFields: [],
-    sorts: [],
-  },
-  rules: {rankingRules: [], filterRules: [], pinRules: []},
+const getErrorStatus = (error: unknown) =>
+  typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' ? error.status : null;
+
+const isNotFoundError = (error: unknown) => {
+  const status = getErrorStatus(error);
+  return status === 404 || /not[_\s-]?found/i.test(getErrorMessage(error, ''));
+};
+
+const isQueryConfigurationType = (
+  value: GlobalConfigType,
+): value is Exclude<GlobalConfigType, 'product-suggest'> => value !== 'product-suggest';
+
+const toQueryConfigSolutionType = (value: Exclude<GlobalConfigType, 'product-suggest'>): QueryConfigSolutionType => value;
+
+const createDefaultQueryConfigurationModel = (solutionType: QueryConfigSolutionType): QueryConfigData => ({
+  perPage: solutionType === 'recommendation' ? 5 : 24,
+  additionalFields: [],
+  ...(solutionType === 'recommendation' ? {} : {sorts: []}),
 });
+
+const createDefaultGlobalQueryConfig = (
+  session: SessionContext,
+  solutionType: QueryConfigSolutionType,
+): CommerceQueryConfigurationRequestModel => ({
+  trackingId: session.trackingId,
+  solutionType,
+  isGlobal: true,
+  configurationModel: createDefaultQueryConfigurationModel(solutionType),
+});
+
+const extractQueryConfigurationModel = (value: JsonObject): QueryConfigData => {
+  const configurationModel = value.configurationModel;
+  if (configurationModel && typeof configurationModel === 'object' && !Array.isArray(configurationModel)) {
+    return configurationModel as QueryConfigData;
+  }
+
+  const legacyQueryConfiguration = value.queryConfiguration;
+  if (legacyQueryConfiguration && typeof legacyQueryConfiguration === 'object' && !Array.isArray(legacyQueryConfiguration)) {
+    return legacyQueryConfiguration as QueryConfigData;
+  }
+
+  return value as QueryConfigData;
+};
+
+const isCommerceQueryConfiguration = (
+  value: GlobalConfigEditorData | null,
+): value is CommerceQueryConfigurationResponseModel =>
+  Boolean(
+    value &&
+      typeof value === 'object' &&
+      'solutionType' in value &&
+      'configurationModel' in value &&
+      value.configurationModel &&
+      typeof value.configurationModel === 'object' &&
+      !Array.isArray(value.configurationModel),
+  );
 
 const defaultProductSuggestConfig = (session: SessionContext): GlobalConfigDataShape => ({
   trackingId: session.trackingId,
@@ -107,11 +156,6 @@ const defaultProductSuggestConfig = (session: SessionContext): GlobalConfigDataS
     additionalFields: [],
     perPage: 10,
   },
-});
-
-const defaultRecommendationsConfig = (): GlobalConfigDataShape => ({
-  additionalFields: [],
-  perPage: 5,
 });
 
 export interface UseManagerControllerOptions {
@@ -125,6 +169,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   const [session, setSession] = useState<SessionContext | null>(null);
   const [connectionForm, setConnectionForm] = useState<ConfigState>(DEFAULT_CONFIG);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [hasResolvedInitialContext, setHasResolvedInitialContext] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [troubleshootDeployForm, setTroubleshootDeployForm] = useState<CommerceTroubleshootDeployFormState>(
@@ -136,7 +181,8 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   const [listingStep, setListingStep] = useState<ListingStep>(1);
   const [parsedListings, setParsedListings] = useState<PublicListingPageRequestModel[]>([]);
   const [globalConfigType, setGlobalConfigType] = useState<GlobalConfigType>('search');
-  const [globalConfigData, setGlobalConfigData] = useState<GlobalConfigDataShape | null>(null);
+  const [globalConfigData, setGlobalConfigData] = useState<GlobalConfigEditorData | null>(null);
+  const [globalConfigExists, setGlobalConfigExists] = useState<boolean | null>(null);
   const [globalConfigString, setGlobalConfigString] = useState('');
   const [contextMappingsData, setContextMappingsData] = useState<ContextMappingsDataShape>([]);
   const [contextMappingsBaseline, setContextMappingsBaseline] = useState<ContextMappingsDataShape>([]);
@@ -157,7 +203,16 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
 
   const availableTrackingIds = session?.trackingIds ?? [];
   const isSessionReady = Boolean(session?.organizationId && session.accessToken && session.trackingId);
-  const qc: QueryConfigData | null = globalConfigData ? globalConfigData.queryConfiguration || globalConfigData : null;
+  const productSuggestConfigData =
+    globalConfigData && !isCommerceQueryConfiguration(globalConfigData) ? globalConfigData : null;
+  const queryConfigurationData: QueryConfigData | null = isCommerceQueryConfiguration(globalConfigData)
+    ? globalConfigData.configurationModel
+    : null;
+  const qc: QueryConfigData | null = globalConfigData
+    ? globalConfigType === 'product-suggest'
+      ? ((productSuggestConfigData?.queryConfiguration || productSuggestConfigData || null) as QueryConfigData | null)
+      : queryConfigurationData
+    : null;
 
   const persistSession = useCallback(async (nextSession: SessionContext | null) => {
     if (!sessionStore) {
@@ -186,6 +241,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setTroubleshootDeployResult(null);
     setListingStep(nextSession ? 2 : 1);
     setGlobalConfigData(null);
+    setGlobalConfigExists(null);
     setGlobalConfigString('');
     setContextMappingsData([]);
     setContextMappingsBaseline([]);
@@ -215,12 +271,14 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
       } else if (runtime === 'extension') {
         setShowManualConnection(true);
       }
+      setHasResolvedInitialContext(true);
     })();
   }, [applySession, contextResolver, runtime]);
 
   const resetTransientState = () => {
     setParsedListings([]);
     setGlobalConfigData(null);
+    setGlobalConfigExists(null);
     setGlobalConfigString('');
     setContextMappingsData([]);
     setContextMappingsBaseline([]);
@@ -323,7 +381,14 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
         });
         setShowManualConnection(false);
       } else {
-        setStatus({type: 'info', message: 'No Hub context is available yet. You can continue with manual connection.'});
+        if (session?.source === 'hub') {
+          await applySession(null, {
+            type: 'info',
+            message: 'No Hub context is available yet. You can continue with manual connection.',
+          });
+        } else {
+          setStatus({type: 'info', message: 'No Hub context is available yet. You can continue with manual connection.'});
+        }
         setShowManualConnection(true);
       }
     } catch (error) {
@@ -348,6 +413,9 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setTroubleshootDeployResult(null);
     setListingStep(2);
     setParsedListings([]);
+    setGlobalConfigData(null);
+    setGlobalConfigExists(null);
+    setGlobalConfigString('');
     setContextMappingsData([]);
     setContextMappingsBaseline([]);
     setContextMappingsStringState('[]');
@@ -365,6 +433,14 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
       [key]: value,
     }));
     setTroubleshootDeployResult(null);
+  };
+
+  const changeGlobalConfigType = (nextValue: GlobalConfigType) => {
+    setGlobalConfigType(nextValue);
+    setGlobalConfigData(null);
+    setGlobalConfigExists(null);
+    setGlobalConfigString('');
+    setStatus(null);
   };
 
   const handleFileUpload = async (file: File | null) => {
@@ -507,32 +583,36 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setLoading(true);
     setStatus(null);
     try {
-      let data: GlobalConfigDataShape;
-      if (globalConfigType === 'search') {
-        data = await getGlobalSearchConfig(session, transport);
-        if (data.id === null) {
-          data = defaultGlobalSearchConfig();
-          setStatus({type: 'info', message: 'Global Search is not configured yet. Loaded a default template.'});
+      let data: GlobalConfigEditorData;
+      if (isQueryConfigurationType(globalConfigType)) {
+        const solutionType = toQueryConfigSolutionType(globalConfigType);
+        try {
+          data = await getGlobalQueryConfig(session, solutionType, transport);
+          setGlobalConfigExists(true);
+        } catch (error) {
+          if (!isNotFoundError(error)) {
+            throw error;
+          }
+
+          data = createDefaultGlobalQueryConfig(session, solutionType);
+          setGlobalConfigExists(false);
+          setStatus({
+            type: 'info',
+            message: `${globalConfigType === 'recommendation' ? 'Recommendations' : globalConfigType === 'listing' ? 'Listings' : 'Search'} is not configured yet. Loaded a default template.`,
+          });
         }
-      } else if (globalConfigType === 'listing') {
-        data = await getGlobalListingConfig(session, transport);
-      } else if (globalConfigType === 'product-suggest') {
+      } else {
         try {
           data = await getGlobalProductSuggestConfig(session, transport);
+          setGlobalConfigExists(true);
         } catch (error) {
-          if (getErrorMessage(error, '').includes('NOT_FOUND')) {
+          if (isNotFoundError(error)) {
             data = defaultProductSuggestConfig(session);
+            setGlobalConfigExists(false);
             setStatus({type: 'info', message: 'Product Suggest is not configured yet. Loaded a default template.'});
           } else {
             throw error;
           }
-        }
-      } else {
-        try {
-          data = await getGlobalRecommendationsConfig(session, transport);
-        } catch {
-          data = defaultRecommendationsConfig();
-          setStatus({type: 'info', message: 'Recommendation config could not be fetched. Loaded a default template.'});
         }
       }
 
@@ -555,18 +635,26 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     try {
       const parsed = JSON.parse(globalConfigString) as JsonObject;
 
-      if (globalConfigType === 'search') {
-        await updateGlobalSearchConfig(session, parsed, transport);
-      } else if (globalConfigType === 'listing') {
-        await updateGlobalListingConfig(session, parsed, transport);
-      } else if (globalConfigType === 'product-suggest') {
+      if (isQueryConfigurationType(globalConfigType)) {
+        const solutionType = toQueryConfigSolutionType(globalConfigType);
+        const queryConfigPayload: CommerceQueryConfigurationRequestModel = {
+          ...createDefaultGlobalQueryConfig(session, solutionType),
+          configurationModel: extractQueryConfigurationModel(parsed),
+        };
+
+        if (globalConfigExists === false) {
+          await createGlobalQueryConfig(session, queryConfigPayload, transport);
+        } else {
+          await updateGlobalQueryConfig(session, queryConfigPayload, transport);
+        }
+      } else if (globalConfigExists === false) {
+        await createGlobalProductSuggestConfig(session, parsed, transport);
+      } else {
         try {
           await updateGlobalProductSuggestConfig(session, parsed, transport);
         } catch {
           await createGlobalProductSuggestConfig(session, parsed, transport);
         }
-      } else {
-        await updateGlobalRecommendationsConfig(session, parsed, transport);
       }
 
       setStatus({type: 'success', message: 'Configuration saved successfully.'});
@@ -765,7 +853,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     URL.revokeObjectURL(link.href);
   };
 
-  const updateGlobalConfigData = (nextValue: GlobalConfigDataShape) => {
+  const updateGlobalConfigData = (nextValue: GlobalConfigEditorData) => {
     setGlobalConfigData(nextValue);
     setGlobalConfigString(JSON.stringify(nextValue, null, 2));
   };
@@ -775,11 +863,11 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
       return;
     }
 
-    if (globalConfigData.queryConfiguration) {
+    if (globalConfigType === 'product-suggest') {
       updateGlobalConfigData({
-        ...globalConfigData,
+        ...(productSuggestConfigData ?? {}),
         queryConfiguration: {
-          ...globalConfigData.queryConfiguration,
+          ...(productSuggestConfigData?.queryConfiguration ?? {}),
           [key]: value,
         },
       });
@@ -788,7 +876,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
 
     updateGlobalConfigData({
       ...globalConfigData,
-      [key]: value,
+      configurationModel: {
+        ...(queryConfigurationData ?? {}),
+        [key]: value,
+      },
     });
   };
 
@@ -1157,6 +1248,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     session,
     connectionForm,
     connectionStatus,
+    hasResolvedInitialContext,
     loading,
     status,
     troubleshootDeployForm,
@@ -1165,6 +1257,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     parsedListings,
     globalConfigType,
     globalConfigData,
+    globalConfigExists,
     globalConfigString,
     contextMappingsData,
     contextMappingsString,
@@ -1194,7 +1287,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     submitListings,
     fetchGlobalConfig,
     saveGlobalConfig,
-    setGlobalConfigType,
+    setGlobalConfigType: changeGlobalConfigType,
     setGlobalConfigString,
     fetchContextMappings,
     saveContextMappings,

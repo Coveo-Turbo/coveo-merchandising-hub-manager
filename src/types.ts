@@ -20,6 +20,9 @@ export interface ConnectionSessionSnapshot extends SessionContext {
   selectedTrackingId: string;
 }
 
+export type HubContextScope = 'unknown' | 'organization' | 'property';
+export type HubContextFieldSource = 'location' | 'dom' | 'request' | 'storage' | 'persisted';
+
 export interface HubContextSnapshot {
   organizationId?: string;
   organizationName?: string;
@@ -29,6 +32,11 @@ export interface HubContextSnapshot {
   locale?: string;
   accessToken?: string;
   platformUrl?: string;
+  contextScope?: HubContextScope;
+  propertyContextVerified?: boolean;
+  trackingIdSource?: HubContextFieldSource;
+  propertyNameSource?: HubContextFieldSource;
+  capturedAt?: number;
 }
 
 export interface EmbeddedAppearance {
@@ -202,9 +210,10 @@ export interface CsvRow {
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';
-export type AppSection = 'listings' | 'global-config' | 'context-mappings' | 'rules' | 'maintenance';
+export type AppSection = 'connection' | 'listings' | 'global-config' | 'context-mappings' | 'rules' | 'maintenance';
 export type ListingStep = 1 | 2 | 3 | 4;
 export type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
+export type QueryConfigSolutionType = 'search' | 'listing' | 'recommendation';
 
 export interface SortDisplayName {
   language: string;
@@ -246,6 +255,20 @@ export interface GlobalConfigDataShape extends QueryConfigData {
   queryConfiguration?: QueryConfigData;
   rules?: JsonValue;
 }
+
+export interface CommerceQueryConfigurationRequestModel {
+  trackingId: string;
+  solutionType: QueryConfigSolutionType;
+  isGlobal: true;
+  targets?: string[];
+  configurationModel: QueryConfigData;
+}
+
+export interface CommerceQueryConfigurationResponseModel extends CommerceQueryConfigurationRequestModel {
+  id?: JsonValue;
+}
+
+export type GlobalConfigEditorData = CommerceQueryConfigurationResponseModel | GlobalConfigDataShape;
 
 export type ContextMappingDestinationAttribute = 'QUERY_PIPELINE_CONTEXT' | 'ML_CONTEXT' | 'FIELD_ALIASES';
 

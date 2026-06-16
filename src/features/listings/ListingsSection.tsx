@@ -22,8 +22,6 @@ import {
   IconFileUpload,
   IconSparkles,
 } from '@coveord/plasma-react-icons';
-import {ConnectionCard} from '../../components/ConnectionCard';
-import {SessionContextCard} from '../../components/SessionContextCard';
 import type {ManagerController} from '../../hooks/useManagerController';
 
 interface ListingsSectionProps {
@@ -39,12 +37,8 @@ export const ListingsSection = ({controller}: ListingsSectionProps) => {
         Listings
       </Header>
 
-      {(controller.showManualConnection || !controller.session) && <ConnectionCard controller={controller} />}
-
       {controller.session ? (
         <>
-          <SessionContextCard controller={controller} />
-
           <Card withBorder radius="md" padding="lg">
             <Stack gap="lg">
               <Stepper active={controller.listingStep - 1} allowNextStepsSelect={false} orientation={isMobile ? 'vertical' : 'horizontal'}>
@@ -199,7 +193,7 @@ export const ListingsSection = ({controller}: ListingsSectionProps) => {
         </>
       ) : (
         <Alert color="yellow" variant="light" title="Connection required" icon={<IconAlertTriangle size={16} />}>
-          Connect manually or refresh the Hub session before you can import listing pages.
+          Open the Connection workspace to refresh the Hub session or connect manually before you import listing pages.
         </Alert>
       )}
     </Stack>

@@ -32,6 +32,7 @@ import {
   IconX,
 } from '@coveord/plasma-react-icons';
 import type {ApiTransport, ContextResolver, SessionStore} from './core/contracts';
+import {ConnectionSection} from './features/connection/ConnectionSection';
 import {ContextMappingsSection} from './features/context-mappings/ContextMappingsSection';
 import {GlobalConfigSection} from './features/global-config/GlobalConfigSection';
 import {ListingsSection} from './features/listings/ListingsSection';
@@ -51,6 +52,7 @@ export interface AppProps {
 }
 
 const navItems: Array<{id: AppSection; label: string; icon: typeof IconLayoutList}> = [
+  {id: 'connection', label: 'Connection', icon: IconRefreshAlert},
   {id: 'listings', label: 'Listings', icon: IconLayoutList},
   {id: 'global-config', label: 'Global Config', icon: IconCode},
   {id: 'context-mappings', label: 'Context Mappings', icon: IconRefreshAlert},
@@ -60,6 +62,8 @@ const navItems: Array<{id: AppSection; label: string; icon: typeof IconLayoutLis
 
 const renderSection = (section: AppSection, controller: ReturnType<typeof useManagerController>) => {
   switch (section) {
+    case 'connection':
+      return <ConnectionSection controller={controller} />;
     case 'global-config':
       return <GlobalConfigSection controller={controller} />;
     case 'context-mappings':
@@ -120,7 +124,7 @@ const getEmbeddedSessionTone = (controller: ReturnType<typeof useManagerControll
 };
 
 const sectionlessConnectionMessage =
-  'Refresh Hub context to reuse the current page session, or open the listings workspace to connect manually.';
+  'Refresh Hub context to reuse the current page session, or open the connection workspace to connect manually.';
 
 const embeddedBoldWeight = 'var(--coveo-fw-bold, 600)';
 const extensionReleaseDownloadUrl =
@@ -145,7 +149,7 @@ const embeddedTabsStyles = {
   },
 };
 
-const StandaloneLayout = ({
+export const StandaloneLayout = ({
   controller,
   section,
   setSection,
@@ -319,7 +323,7 @@ const StandaloneLayout = ({
   );
 };
 
-const EmbeddedLayout = ({
+export const EmbeddedLayout = ({
   controller,
   section,
   setSection,
@@ -331,6 +335,16 @@ const EmbeddedLayout = ({
   onExitEmbedded?: () => void;
 }) => {
   const sessionTone = getEmbeddedSessionTone(controller);
+  const embeddedTrackingSelect = controller.session && controller.availableTrackingIds.length > 0 ? (
+    <Select
+      aria-label="Tracking ID"
+      data={controller.availableTrackingIds.map((trackingId) => ({value: trackingId, label: trackingId}))}
+      value={controller.session.trackingId}
+      onChange={(value) => value && void controller.switchTrackingId(value)}
+      allowDeselect={false}
+      placeholder="Select tracking ID"
+    />
+  ) : null;
 
   return (
     <Stack gap="md" p="md">
@@ -370,6 +384,7 @@ const EmbeddedLayout = ({
               </Stack>
 
               <Group gap="sm" wrap="wrap">
+                {embeddedTrackingSelect ? <div style={{minWidth: '16rem'}}>{embeddedTrackingSelect}</div> : null}
                 <Button
                   variant="light"
                   color="violet"
@@ -383,8 +398,8 @@ const EmbeddedLayout = ({
                   <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
                     Disconnect
                   </Button>
-                ) : section !== 'listings' ? (
-                  <Button variant="default" onClick={() => setSection('listings')}>
+                ) : section !== 'connection' ? (
+                  <Button variant="default" onClick={() => setSection('connection')}>
                     Open connection form
                   </Button>
                 ) : null}
@@ -417,7 +432,7 @@ const EmbeddedLayout = ({
   );
 };
 
-const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEmbedded}: AppProps) => {
+export const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEmbedded}: AppProps) => {
   const controller = useManagerController({runtime, transport, contextResolver, sessionStore});
   const [section, setSection] = useUrlSection(runtime === 'extension');
   const lastAutoLoadedGlobalConfigRef = useRef<string | null>(null);
@@ -429,6 +444,14 @@ const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEm
   const sessionTrackingId = controller.session?.trackingId;
   const sessionAccessToken = controller.session?.accessToken;
   const sessionPlatformUrl = controller.session?.platformUrl;
+
+  useEffect(() => {
+    if (!controller.hasResolvedInitialContext || controller.session || section === 'connection') {
+      return;
+    }
+
+    setSection('connection');
+  }, [controller.hasResolvedInitialContext, controller.session, section, setSection]);
 
   useEffect(() => {
     fetchGlobalConfigRef.current = controller.fetchGlobalConfig;

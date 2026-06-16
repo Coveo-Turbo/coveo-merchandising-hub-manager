@@ -2,6 +2,8 @@ import type {ApiTransport} from '../core/contracts';
 import {createBrowserApiTransport} from '../core/apiTransport';
 import type {
   BulkCreateRulesResult,
+  CommerceQueryConfigurationRequestModel,
+  CommerceQueryConfigurationResponseModel,
   CommercePageModelPublicListingPageResponseModel,
   ContextMappingsDataShape,
   DetailedListingPageResponseModel,
@@ -10,6 +12,7 @@ import type {
   MerchandisingHubRulePayload,
   PublicListingPageRequestModel,
   PublicListingPageResponseModel,
+  QueryConfigSolutionType,
   RankingRuleModel,
   SessionContext,
 } from '../types';
@@ -63,7 +66,9 @@ const requestText = async (
   });
 
   if (!response.ok) {
-    throw new Error(extractErrorMessage(response.body));
+    const error = new Error(extractErrorMessage(response.body)) as Error & {status?: number};
+    error.status = response.status;
+    throw error;
   }
 
   return response.body;
@@ -136,6 +141,11 @@ const getContextMappingsBasePath = (session: SessionContext) =>
   `/rest/organizations/${session.organizationId}/commerce/v2/tracking-ids/${encodeURIComponent(
     session.trackingId,
   )}/context-mappings`;
+
+const getGlobalQueryConfigPath = (session: SessionContext, solutionType: QueryConfigSolutionType) =>
+  `/rest/organizations/${session.organizationId}/commerce/v2/configurations/query?trackingId=${encodeURIComponent(
+    session.trackingId,
+  )}&solutionType=${encodeURIComponent(solutionType)}&isGlobal=true`;
 
 export interface RankingRulesResponse {
   page: number;
@@ -259,45 +269,37 @@ export const bulkDeleteListings = async (session: SessionContext, ids: string[],
   }
 };
 
-export const getGlobalSearchConfig = async (session: SessionContext, transport?: ApiTransport) =>
-  requestJson<GlobalConfigDataShape>(
+export const getGlobalQueryConfig = async (
+  session: SessionContext,
+  solutionType: QueryConfigSolutionType,
+  transport?: ApiTransport,
+) =>
+  requestJson<CommerceQueryConfigurationResponseModel>(
     session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/search/global?trackingId=${encodeURIComponent(
-      session.trackingId,
-    )}`,
+    getGlobalQueryConfigPath(session, solutionType),
     {transport},
   );
 
-export const updateGlobalSearchConfig = async (
+export const createGlobalQueryConfig = async (
   session: SessionContext,
-  data: JsonObject,
+  data: CommerceQueryConfigurationRequestModel,
   transport?: ApiTransport,
 ) =>
-  postJson<GlobalConfigDataShape>(
+  postJson<CommerceQueryConfigurationResponseModel>(
     session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/search/global`,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/query`,
     data,
     transport,
-    'PUT',
   );
 
-export const getGlobalListingConfig = async (session: SessionContext, transport?: ApiTransport) =>
-  requestJson<GlobalConfigDataShape>(
-    session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/listings/global?trackingId=${encodeURIComponent(
-      session.trackingId,
-    )}`,
-    {transport},
-  );
-
-export const updateGlobalListingConfig = async (
+export const updateGlobalQueryConfig = async (
   session: SessionContext,
-  data: JsonObject,
+  data: CommerceQueryConfigurationRequestModel,
   transport?: ApiTransport,
 ) =>
-  postJson<GlobalConfigDataShape>(
+  postJson<CommerceQueryConfigurationResponseModel>(
     session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/listings/global`,
+    `/rest/organizations/${session.organizationId}/commerce/v2/configurations/query`,
     data,
     transport,
     'PUT',
@@ -337,30 +339,6 @@ export const createGlobalProductSuggestConfig = async (
     `/rest/organizations/${session.organizationId}/commerce/v2/configurations/productSuggest`,
     data,
     transport,
-  );
-
-export const getGlobalRecommendationsConfig = async (session: SessionContext, transport?: ApiTransport) =>
-  requestJson<GlobalConfigDataShape>(
-    session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${encodeURIComponent(
-      session.trackingId,
-    )}`,
-    {transport},
-  );
-
-export const updateGlobalRecommendationsConfig = async (
-  session: SessionContext,
-  data: JsonObject,
-  transport?: ApiTransport,
-) =>
-  postJson<GlobalConfigDataShape>(
-    session,
-    `/rest/organizations/${session.organizationId}/commerce/v2/recommendations/slots/global/query-configuration?trackingId=${encodeURIComponent(
-      session.trackingId,
-    )}`,
-    data,
-    transport,
-    'PUT',
   );
 
 export const getContextMappings = async (session: SessionContext, transport?: ApiTransport) =>
