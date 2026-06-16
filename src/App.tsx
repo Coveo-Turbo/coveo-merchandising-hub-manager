@@ -32,6 +32,7 @@ import {
   IconX,
 } from '@coveord/plasma-react-icons';
 import type {ApiTransport, ContextResolver, SessionStore} from './core/contracts';
+import {getRequiredSection} from './appRouting';
 import {ConnectionSection} from './features/connection/ConnectionSection';
 import {ContextMappingsSection} from './features/context-mappings/ContextMappingsSection';
 import {GlobalConfigSection} from './features/global-config/GlobalConfigSection';
@@ -446,11 +447,12 @@ export const AppContent = ({runtime, transport, contextResolver, sessionStore, o
   const sessionPlatformUrl = controller.session?.platformUrl;
 
   useEffect(() => {
-    if (!controller.hasResolvedInitialContext || controller.session || section === 'connection') {
+    const requiredSection = getRequiredSection(section, controller.hasResolvedInitialContext, Boolean(controller.session));
+    if (requiredSection === section) {
       return;
     }
 
-    setSection('connection');
+    setSection(requiredSection);
   }, [controller.hasResolvedInitialContext, controller.session, section, setSection]);
 
   useEffect(() => {

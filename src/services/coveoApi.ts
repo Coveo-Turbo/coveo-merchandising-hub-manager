@@ -147,6 +147,35 @@ const getGlobalQueryConfigPath = (session: SessionContext, solutionType: QueryCo
     session.trackingId,
   )}&solutionType=${encodeURIComponent(solutionType)}&isGlobal=true`;
 
+const isQueryConfigurationResponseModel = (value: unknown): value is CommerceQueryConfigurationResponseModel =>
+  isRecord(value) &&
+  typeof value.trackingId === 'string' &&
+  typeof value.solutionType === 'string' &&
+  value.isGlobal === true &&
+  isRecord(value.configurationModel);
+
+const normalizeGlobalQueryConfigResponse = (payload: unknown): CommerceQueryConfigurationResponseModel | null => {
+  if (isQueryConfigurationResponseModel(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    return payload.find(isQueryConfigurationResponseModel) ?? null;
+  }
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const collection = Array.isArray(payload.items)
+    ? payload.items
+    : Array.isArray(payload.configurations)
+      ? payload.configurations
+      : null;
+
+  return collection?.find(isQueryConfigurationResponseModel) ?? null;
+};
+
 export interface RankingRulesResponse {
   page: number;
   perPage: number;
@@ -273,12 +302,22 @@ export const getGlobalQueryConfig = async (
   session: SessionContext,
   solutionType: QueryConfigSolutionType,
   transport?: ApiTransport,
-) =>
-  requestJson<CommerceQueryConfigurationResponseModel>(
+) => {
+  const payload = await requestJson<unknown>(
     session,
     getGlobalQueryConfigPath(session, solutionType),
     {transport},
   );
+
+  const normalized = normalizeGlobalQueryConfigResponse(payload);
+  if (!normalized) {
+    const error = new Error('NOT_FOUND: Query configuration not found.') as Error & {status?: number};
+    error.status = 404;
+    throw error;
+  }
+
+  return normalized;
+};
 
 export const createGlobalQueryConfig = async (
   session: SessionContext,

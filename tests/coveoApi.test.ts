@@ -114,7 +114,7 @@ describe('coveoApi context mappings', () => {
 
 describe('coveoApi query configurations', () => {
   it('fetches the global query configuration for a solution through the unified endpoint', async () => {
-    const payload = {
+    const queryConfig = {
       trackingId: 'storefront',
       solutionType: 'search',
       isGlobal: true,
@@ -126,11 +126,11 @@ describe('coveoApi query configurations', () => {
     };
     const request = vi.fn().mockResolvedValue({
       ok: true,
-      body: JSON.stringify(payload),
+      body: JSON.stringify({items: [queryConfig]}),
     });
     const transport: ApiTransport = {request};
 
-    await expect(getGlobalQueryConfig(session, 'search', transport)).resolves.toEqual(payload);
+    await expect(getGlobalQueryConfig(session, 'search', transport)).resolves.toEqual(queryConfig);
 
     const fetchArgs = request.mock.calls[0][0];
     expect(fetchArgs.url).toBe(
