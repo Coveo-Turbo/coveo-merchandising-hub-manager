@@ -12,6 +12,7 @@ import type {
   MerchandisingHubRulePayload,
   PublicListingPageRequestModel,
   PublicListingPageResponseModel,
+  QueryConfigData,
   QueryConfigSolutionType,
   RankingRuleModel,
   SessionContext,
@@ -142,6 +143,9 @@ const getContextMappingsBasePath = (session: SessionContext) =>
     session.trackingId,
   )}/context-mappings`;
 
+const isQueryConfigSolutionType = (value: unknown): value is QueryConfigSolutionType =>
+  value === 'search' || value === 'listing' || value === 'recommendation';
+
 const getGlobalQueryConfigPath = (session: SessionContext, solutionType: QueryConfigSolutionType) =>
   `/rest/organizations/${session.organizationId}/commerce/v2/configurations/query?trackingId=${encodeURIComponent(
     session.trackingId,
@@ -154,7 +158,10 @@ const isQueryConfigurationResponseModel = (value: unknown): value is CommerceQue
   value.isGlobal === true &&
   isRecord(value.configurationModel);
 
-const normalizeGlobalQueryConfigResponse = (payload: unknown): CommerceQueryConfigurationResponseModel | null => {
+const coerceGlobalQueryConfigResponse = (
+  payload: unknown,
+  fallback?: CommerceQueryConfigurationRequestModel,
+): CommerceQueryConfigurationResponseModel | null => {
   if (isQueryConfigurationResponseModel(payload)) {
     return payload;
   }
@@ -173,7 +180,35 @@ const normalizeGlobalQueryConfigResponse = (payload: unknown): CommerceQueryConf
       ? payload.configurations
       : null;
 
-  return collection?.find(isQueryConfigurationResponseModel) ?? null;
+  const directMatch = collection?.find(isQueryConfigurationResponseModel) ?? null;
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const configurationModelCandidate = isRecord(payload.configurationModel)
+    ? payload.configurationModel
+    : isRecord(payload.configuration)
+      ? payload.configuration
+      : isRecord(payload.queryConfiguration)
+        ? payload.queryConfiguration
+        : null;
+
+  const trackingId = typeof payload.trackingId === 'string' ? payload.trackingId : fallback?.trackingId;
+  const solutionType = isQueryConfigSolutionType(payload.solutionType) ? payload.solutionType : fallback?.solutionType;
+  const isGlobal = payload.isGlobal === true || fallback?.isGlobal === true;
+
+  if (trackingId && solutionType && isGlobal && configurationModelCandidate) {
+    return {
+      trackingId,
+      solutionType,
+      isGlobal: true,
+      configurationModel: configurationModelCandidate as QueryConfigData,
+      ...(Object.prototype.hasOwnProperty.call(payload, 'id') ? {id: payload.id} : {}),
+      ...(Array.isArray(payload.targets) ? {targets: payload.targets.filter((target): target is string => typeof target === 'string')} : {}),
+    };
+  }
+
+  return fallback ?? null;
 };
 
 export interface RankingRulesResponse {
@@ -309,7 +344,7 @@ export const getGlobalQueryConfig = async (
     {transport},
   );
 
-  const normalized = normalizeGlobalQueryConfigResponse(payload);
+  const normalized = coerceGlobalQueryConfigResponse(payload);
   if (!normalized) {
     const error = new Error('NOT_FOUND: Query configuration not found.') as Error & {status?: number};
     error.status = 404;
@@ -323,26 +358,32 @@ export const createGlobalQueryConfig = async (
   session: SessionContext,
   data: CommerceQueryConfigurationRequestModel,
   transport?: ApiTransport,
-) =>
-  postJson<CommerceQueryConfigurationResponseModel>(
+) => {
+  const payload = await postJson<unknown>(
     session,
     `/rest/organizations/${session.organizationId}/commerce/v2/configurations/query`,
     data,
     transport,
   );
 
+  return coerceGlobalQueryConfigResponse(payload, data) ?? data;
+};
+
 export const updateGlobalQueryConfig = async (
   session: SessionContext,
   data: CommerceQueryConfigurationRequestModel,
   transport?: ApiTransport,
-) =>
-  postJson<CommerceQueryConfigurationResponseModel>(
+) => {
+  const payload = await postJson<unknown>(
     session,
     `/rest/organizations/${session.organizationId}/commerce/v2/configurations/query`,
     data,
     transport,
     'PUT',
   );
+
+  return coerceGlobalQueryConfigResponse(payload, data) ?? data;
+};
 
 export const getGlobalProductSuggestConfig = async (session: SessionContext, transport?: ApiTransport) =>
   requestJson<GlobalConfigDataShape>(

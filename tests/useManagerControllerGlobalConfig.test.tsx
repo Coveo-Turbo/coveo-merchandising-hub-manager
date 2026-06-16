@@ -57,6 +57,7 @@ describe('useManagerController global config saves', () => {
     const notFoundError = Object.assign(new Error('Not found'), {status: 404});
     mockGetGlobalQueryConfig.mockRejectedValue(notFoundError);
     mockCreateGlobalQueryConfig.mockResolvedValue({
+      id: 'query-config-1',
       trackingId: 'storefront',
       solutionType: 'search',
       isGlobal: true,
@@ -86,11 +87,18 @@ describe('useManagerController global config saves', () => {
     });
 
     await act(async () => {
+      result.current.updateQueryConfigField('perPage', 48);
+    });
+
+    await act(async () => {
       await result.current.saveGlobalConfig();
     });
 
     expect(mockCreateGlobalQueryConfig).toHaveBeenCalledTimes(1);
     expect(mockUpdateGlobalQueryConfig).not.toHaveBeenCalled();
+    expect(result.current.globalConfigExists).toBe(true);
+    expect(result.current.qc?.perPage).toBe(24);
+    expect(result.current.globalConfigString).toContain('"id": "query-config-1"');
   });
 
   it('updates the query configuration after an existing global config has been loaded', async () => {

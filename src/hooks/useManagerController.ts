@@ -634,6 +634,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
     setStatus(null);
     try {
       const parsed = JSON.parse(globalConfigString) as JsonObject;
+      let nextGlobalConfigData: GlobalConfigEditorData | null = null;
 
       if (isQueryConfigurationType(globalConfigType)) {
         const solutionType = toQueryConfigSolutionType(globalConfigType);
@@ -643,22 +644,29 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
         };
 
         if (globalConfigExists === false) {
-          await createGlobalQueryConfig(session, queryConfigPayload, transport);
+          nextGlobalConfigData = await createGlobalQueryConfig(session, queryConfigPayload, transport);
         } else {
-          await updateGlobalQueryConfig(session, queryConfigPayload, transport);
+          nextGlobalConfigData = await updateGlobalQueryConfig(session, queryConfigPayload, transport);
         }
-      } else if (globalConfigExists === false) {
-        await createGlobalProductSuggestConfig(session, parsed, transport);
       } else {
-        try {
-          await updateGlobalProductSuggestConfig(session, parsed, transport);
-        } catch {
-          await createGlobalProductSuggestConfig(session, parsed, transport);
+        if (globalConfigExists === false) {
+          nextGlobalConfigData = await createGlobalProductSuggestConfig(session, parsed, transport);
+        } else {
+          try {
+            nextGlobalConfigData = await updateGlobalProductSuggestConfig(session, parsed, transport);
+          } catch {
+            nextGlobalConfigData = await createGlobalProductSuggestConfig(session, parsed, transport);
+          }
         }
       }
 
+      if (nextGlobalConfigData) {
+        setGlobalConfigExists(true);
+        setGlobalConfigData(nextGlobalConfigData);
+        setGlobalConfigString(JSON.stringify(nextGlobalConfigData, null, 2));
+      }
+
       setStatus({type: 'success', message: 'Configuration saved successfully.'});
-      await fetchGlobalConfig();
     } catch (error) {
       setStatus({type: 'error', message: `Failed to save config: ${getErrorMessage(error, 'Unknown error.')}`});
     } finally {

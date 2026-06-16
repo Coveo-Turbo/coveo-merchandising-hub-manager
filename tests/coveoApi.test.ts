@@ -166,6 +166,46 @@ describe('coveoApi query configurations', () => {
     expect(createArgs.headers['Content-Type']).toBe('application/json');
   });
 
+  it('normalizes a create response that returns configuration instead of configurationModel', async () => {
+    const payload: CommerceQueryConfigurationRequestModel = {
+      trackingId: 'storefront',
+      solutionType: 'listing',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 24,
+        additionalFields: ['ec_brand'],
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      body: JSON.stringify({
+        id: 'query-config-2',
+        trackingId: 'storefront',
+        solutionType: 'listing',
+        isGlobal: true,
+        configuration: {
+          perPage: 36,
+          additionalFields: ['ec_brand'],
+          sorts: [{sortCriteria: 'relevance'}],
+        },
+      }),
+    });
+    const transport: ApiTransport = {request};
+
+    await expect(createGlobalQueryConfig(session, payload, transport)).resolves.toEqual({
+      id: 'query-config-2',
+      trackingId: 'storefront',
+      solutionType: 'listing',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 36,
+        additionalFields: ['ec_brand'],
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    });
+  });
+
   it('updates an existing global query configuration with PUT', async () => {
     const payload: CommerceQueryConfigurationRequestModel = {
       trackingId: 'storefront',
