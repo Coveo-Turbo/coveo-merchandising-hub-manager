@@ -158,6 +158,33 @@ const isQueryConfigurationResponseModel = (value: unknown): value is CommerceQue
   value.isGlobal === true &&
   isRecord(value.configurationModel);
 
+const looksLikeQueryConfigData = (value: unknown): value is QueryConfigData => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length === 0) {
+    return false;
+  }
+
+  return keys.some(
+    (key) =>
+      ![
+        'id',
+        'trackingId',
+        'solutionType',
+        'isGlobal',
+        'targets',
+        'items',
+        'configurations',
+        'configurationModel',
+        'configuration',
+        'queryConfiguration',
+      ].includes(key),
+  );
+};
+
 const coerceGlobalQueryConfigResponse = (
   payload: unknown,
   fallback?: CommerceQueryConfigurationRequestModel,
@@ -191,6 +218,8 @@ const coerceGlobalQueryConfigResponse = (
       ? payload.configuration
       : isRecord(payload.queryConfiguration)
         ? payload.queryConfiguration
+        : looksLikeQueryConfigData(payload)
+          ? payload
         : null;
 
   const trackingId = typeof payload.trackingId === 'string' ? payload.trackingId : fallback?.trackingId;
@@ -344,7 +373,12 @@ export const getGlobalQueryConfig = async (
     {transport},
   );
 
-  const normalized = coerceGlobalQueryConfigResponse(payload);
+  const normalized = coerceGlobalQueryConfigResponse(payload, {
+    trackingId: session.trackingId,
+    solutionType,
+    isGlobal: true,
+    configurationModel: {},
+  });
   if (!normalized) {
     const error = new Error('NOT_FOUND: Query configuration not found.') as Error & {status?: number};
     error.status = 404;

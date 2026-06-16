@@ -140,6 +140,41 @@ describe('coveoApi query configurations', () => {
     expect(fetchArgs.body).toBeUndefined();
   });
 
+  it('treats a plain GET response object as the configuration model for the active solution', async () => {
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      body: JSON.stringify({
+        additionalFields: ['ec_name'],
+        facets: {
+          enableIndexFacetOrdering: true,
+          freezeFacetOrder: false,
+          facets: [],
+        },
+        perPage: 12,
+        sorts: [{sortCriteria: 'relevance'}],
+        grouping: {type: 'none'},
+      }),
+    });
+    const transport: ApiTransport = {request};
+
+    await expect(getGlobalQueryConfig(session, 'search', transport)).resolves.toEqual({
+      trackingId: 'storefront',
+      solutionType: 'search',
+      isGlobal: true,
+      configurationModel: {
+        additionalFields: ['ec_name'],
+        facets: {
+          enableIndexFacetOrdering: true,
+          freezeFacetOrder: false,
+          facets: [],
+        },
+        perPage: 12,
+        sorts: [{sortCriteria: 'relevance'}],
+        grouping: {type: 'none'},
+      },
+    });
+  });
+
   it('creates the first global query configuration with POST', async () => {
     const payload: CommerceQueryConfigurationRequestModel = {
       trackingId: 'storefront',
@@ -201,6 +236,39 @@ describe('coveoApi query configurations', () => {
       configurationModel: {
         perPage: 36,
         additionalFields: ['ec_brand'],
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    });
+  });
+
+  it('normalizes a create response that returns the raw configuration object', async () => {
+    const payload: CommerceQueryConfigurationRequestModel = {
+      trackingId: 'storefront',
+      solutionType: 'listing',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 24,
+        additionalFields: ['ec_brand'],
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    };
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      body: JSON.stringify({
+        perPage: 36,
+        additionalFields: ['ec_name'],
+        sorts: [{sortCriteria: 'relevance'}],
+      }),
+    });
+    const transport: ApiTransport = {request};
+
+    await expect(createGlobalQueryConfig(session, payload, transport)).resolves.toEqual({
+      trackingId: 'storefront',
+      solutionType: 'listing',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 36,
+        additionalFields: ['ec_name'],
         sorts: [{sortCriteria: 'relevance'}],
       },
     });
