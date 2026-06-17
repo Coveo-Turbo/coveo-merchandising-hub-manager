@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import type {AppSection} from '../types';
 
 const isSection = (value: string | null): value is AppSection =>
+  value === 'connection' ||
   value === 'listings' ||
   value === 'global-config' ||
   value === 'context-mappings' ||

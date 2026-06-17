@@ -7,12 +7,12 @@ import {createExtensionApiTransport} from '../core/apiTransport';
 import type {ContextResolver} from '../core/contracts';
 import type {ExtensionSessionMessage, ExtensionTabMessage} from '../core/extensionProtocol';
 import type {EmbeddedAppearance, HubContextSnapshot, SessionContext} from '../types';
+import {resolveSessionFromHubContextSnapshot} from './contextNormalization';
 import pageBridgeScript from './pageBridge.ts?script&module';
 import coreStyles from '@mantine/core/styles.css?inline';
 import datesStyles from '@mantine/dates/styles.css?inline';
 import appStyles from '../index.css?inline';
 import embeddedStyles from './embedded.css?inline';
-import {inferPlatformUrlFromHostname} from './hosts';
 import {captureEmbeddedAppearance, findSidebarRoot, resolveEmbeddedHostInsets} from './layout';
 import {shouldDeactivateManagerFromTarget, syncManagerNavItem} from './navigation';
 
@@ -46,7 +46,7 @@ const openManager = () => {
   updateSearchParams((params) => {
     params.set('cmhManager', '1');
     if (!params.has('cmhSection')) {
-      params.set('cmhSection', 'listings');
+      params.set('cmhSection', 'connection');
     }
   });
 };
@@ -55,7 +55,7 @@ const getManagerHref = () => {
   const params = getSearchParams();
   params.set('cmhManager', '1');
   if (!params.has('cmhSection')) {
-    params.set('cmhSection', 'listings');
+    params.set('cmhSection', 'connection');
   }
 
   const query = params.toString();
@@ -154,36 +154,6 @@ const ensureSidebarListeners = (sidebar: HTMLElement) => {
   activeSidebar = sidebar;
   activeSidebar.addEventListener('click', handleSidebarClick, true);
   activeSidebar.addEventListener('keydown', handleSidebarKeydown, true);
-};
-
-const normalizeContext = (snapshot: HubContextSnapshot): SessionContext | null => {
-  const accessToken = snapshot.accessToken?.trim();
-  const organizationId = snapshot.organizationId?.trim();
-  const trackingId = snapshot.trackingId?.trim();
-
-  if (!accessToken || !organizationId) {
-    return null;
-  }
-
-  const platformUrl = snapshot.platformUrl?.trim() || inferPlatformUrlFromHostname(window.location.hostname);
-  const trackingIds = snapshot.trackingIds?.filter((entry) => entry.trim().length > 0) ?? [];
-  const resolvedTrackingId = trackingId || trackingIds[0];
-
-  if (!resolvedTrackingId) {
-    return null;
-  }
-
-  return {
-    organizationId,
-    organizationName: snapshot.organizationName,
-    trackingId: resolvedTrackingId,
-    trackingIds: [...new Set([resolvedTrackingId, ...trackingIds])],
-    propertyName: snapshot.propertyName,
-    locale: snapshot.locale,
-    accessToken,
-    platformUrl,
-    source: 'hub',
-  };
 };
 
 const storeContext = async (context: SessionContext | null) => {
@@ -296,7 +266,12 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  const nextContext = normalizeContext(event.data.payload as HubContextSnapshot);
+  const nextContext = resolveSessionFromHubContextSnapshot(event.data.payload as HubContextSnapshot, {
+    pathname: window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    hostname: window.location.hostname,
+  });
   void storeContext(nextContext);
 });
 

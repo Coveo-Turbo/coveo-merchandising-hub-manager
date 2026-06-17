@@ -1,4 +1,9 @@
 import type {HubContextSnapshot} from '../types';
+import {
+  getHubLocationScope,
+  parseOrgIdFromLocation,
+  parseTrackingIdFromLocation,
+} from './contextNormalization';
 import {inferPlatformUrlFromHostname} from './hosts';
 
 declare global {
@@ -38,23 +43,45 @@ const readLabelValue = (labelText: string) => {
   return parentSiblingText || undefined;
 };
 
-const mergeSnapshot = (partial: HubContextSnapshot) => {
-  window.__CMH_CAPTURED_CONTEXT__ = {
-    ...window.__CMH_CAPTURED_CONTEXT__,
-    ...partial,
-    trackingIds: partial.trackingIds ?? window.__CMH_CAPTURED_CONTEXT__?.trackingIds,
-  };
-  window.sessionStorage.setItem(STORAGE_CAPTURE_KEY, JSON.stringify(window.__CMH_CAPTURED_CONTEXT__));
-};
+const currentLocationState = () => ({
+  pathname: window.location.pathname,
+  search: window.location.search,
+  hash: window.location.hash,
+  hostname: window.location.hostname,
+});
 
-const parseOrgIdFromLocation = () => {
-  const hashMatch = window.location.hash.match(/#\/([^/?]+)/);
-  if (hashMatch?.[1]) {
-    return hashMatch[1];
+const mergeSnapshot = (partial: HubContextSnapshot) => {
+  const previousSnapshot = window.__CMH_CAPTURED_CONTEXT__;
+  const currentOrgId = parseOrgIdFromLocation(currentLocationState());
+  const previousOrgId = previousSnapshot?.organizationId;
+  const nextOrgId = partial.organizationId ?? currentOrgId ?? previousOrgId;
+  const orgChanged = Boolean(currentOrgId && previousOrgId && currentOrgId !== previousOrgId);
+  const baseSnapshot = orgChanged ? {} : previousSnapshot;
+  const mergedTrackingIds = [
+    ...(baseSnapshot?.trackingIds ?? []),
+    ...(partial.trackingIds ?? []),
+  ].filter((entry, index, array) => entry.trim().length > 0 && array.indexOf(entry) === index);
+
+  window.__CMH_CAPTURED_CONTEXT__ = {
+    ...baseSnapshot,
+    ...partial,
+    ...(nextOrgId ? {organizationId: nextOrgId} : {}),
+    trackingIds: mergedTrackingIds,
+    capturedAt: partial.capturedAt ?? Date.now(),
+  };
+
+  if (window.__CMH_CAPTURED_CONTEXT__?.contextScope !== 'property') {
+    window.__CMH_CAPTURED_CONTEXT__ = {
+      ...window.__CMH_CAPTURED_CONTEXT__,
+      trackingId: undefined,
+      propertyName: undefined,
+      trackingIdSource: undefined,
+      propertyNameSource: undefined,
+      propertyContextVerified: false,
+    };
   }
 
-  const pathMatch = window.location.pathname.match(/\/organizations\/([^/?]+)/);
-  return pathMatch?.[1];
+  window.sessionStorage.setItem(STORAGE_CAPTURE_KEY, JSON.stringify(window.__CMH_CAPTURED_CONTEXT__));
 };
 
 const recursiveHarvest = (value: unknown, snapshot: HubContextSnapshot, depth = 0) => {
@@ -106,6 +133,37 @@ const recursiveHarvest = (value: unknown, snapshot: HubContextSnapshot, depth = 
     snapshot.trackingIds = trackingIds.filter((entry): entry is string => entry.trim().length > 0);
   }
 
+  const contextScope = value.contextScope;
+  if (contextScope === 'unknown' || contextScope === 'organization' || contextScope === 'property') {
+    snapshot.contextScope = contextScope;
+  }
+
+  if (typeof value.propertyContextVerified === 'boolean') {
+    snapshot.propertyContextVerified = value.propertyContextVerified;
+  }
+
+  const trackingIdSource = value.trackingIdSource;
+  if (
+    trackingIdSource === 'location' ||
+    trackingIdSource === 'dom' ||
+    trackingIdSource === 'request' ||
+    trackingIdSource === 'storage' ||
+    trackingIdSource === 'persisted'
+  ) {
+    snapshot.trackingIdSource = trackingIdSource;
+  }
+
+  const propertyNameSource = value.propertyNameSource;
+  if (
+    propertyNameSource === 'location' ||
+    propertyNameSource === 'dom' ||
+    propertyNameSource === 'request' ||
+    propertyNameSource === 'storage' ||
+    propertyNameSource === 'persisted'
+  ) {
+    snapshot.propertyNameSource = propertyNameSource;
+  }
+
   Object.values(value).forEach((entry) => recursiveHarvest(entry, snapshot, depth + 1));
 };
 
@@ -128,6 +186,14 @@ const scanStorage = (): HubContextSnapshot => {
     }
   });
 
+  if (snapshot.trackingId && !snapshot.trackingIdSource) {
+    snapshot.trackingIdSource = 'storage';
+  }
+
+  if (snapshot.propertyName && !snapshot.propertyNameSource) {
+    snapshot.propertyNameSource = 'storage';
+  }
+
   return snapshot;
 };
 
@@ -145,7 +211,12 @@ const captureFromRequest = (urlLike: string, init?: RequestInit | XMLHttpRequest
     const partial: HubContextSnapshot = {
       organizationId,
       trackingId,
+      trackingIds: trackingId ? [trackingId] : undefined,
       platformUrl,
+      contextScope: trackingId ? 'property' : 'organization',
+      propertyContextVerified: Boolean(trackingId),
+      trackingIdSource: trackingId ? 'request' : undefined,
+      capturedAt: Date.now(),
     };
 
     if (init && 'headers' in init && init.headers) {
@@ -206,20 +277,67 @@ const buildSnapshot = (): HubContextSnapshot => {
   const storageSnapshot = scanStorage();
   const storedSnapshot = readJson(window.sessionStorage.getItem(STORAGE_CAPTURE_KEY) || '{}');
   const persistedSnapshot = isRecord(storedSnapshot) ? (storedSnapshot as HubContextSnapshot) : {};
+  const liveLocation = currentLocationState();
+  const liveOrganizationId = parseOrgIdFromLocation(liveLocation);
+  const liveTrackingId = parseTrackingIdFromLocation(liveLocation);
   const liveSnapshot: HubContextSnapshot = {
     platformUrl: inferPlatformUrlFromHostname(window.location.hostname),
-    organizationId: parseOrgIdFromLocation(),
+    organizationId: liveOrganizationId,
     organizationName: readLabelValue('organization:'),
     propertyName: readLabelValue('property:'),
     locale: readLabelValue('locale:'),
+    trackingId: liveTrackingId,
+    contextScope: getHubLocationScope(liveLocation),
+    propertyContextVerified: Boolean(liveTrackingId || readLabelValue('property:')),
+    trackingIdSource: liveTrackingId ? 'location' : undefined,
+    propertyNameSource: readLabelValue('property:') ? 'dom' : undefined,
+    capturedAt: Date.now(),
   };
 
-  return {
-    ...persistedSnapshot,
-    ...storageSnapshot,
-    ...liveSnapshot,
-    trackingIds: storageSnapshot.trackingIds ?? persistedSnapshot.trackingIds,
+  const sanitizeSnapshotForCurrentOrg = (snapshot: HubContextSnapshot) => {
+    if (!liveOrganizationId || !snapshot.organizationId || snapshot.organizationId === liveOrganizationId) {
+      return snapshot;
+    }
+
+    return {
+      accessToken: snapshot.accessToken,
+      platformUrl: snapshot.platformUrl,
+      locale: snapshot.locale,
+      organizationId: liveOrganizationId,
+      contextScope: 'organization' as const,
+      propertyContextVerified: false,
+    };
   };
+
+  const sanitizedPersistedSnapshot = sanitizeSnapshotForCurrentOrg(persistedSnapshot);
+  const sanitizedStorageSnapshot = sanitizeSnapshotForCurrentOrg(storageSnapshot);
+  const trackingIds = [
+    ...(sanitizedStorageSnapshot.trackingIds ?? []),
+    ...(sanitizedPersistedSnapshot.trackingIds ?? []),
+    sanitizedStorageSnapshot.trackingId,
+    sanitizedPersistedSnapshot.trackingId,
+    liveTrackingId,
+  ].filter((entry, index, array): entry is string => typeof entry === 'string' && entry.trim().length > 0 && array.indexOf(entry) === index);
+
+  const mergedSnapshot = {
+    ...sanitizedPersistedSnapshot,
+    ...sanitizedStorageSnapshot,
+    ...liveSnapshot,
+    trackingIds,
+  };
+
+  if (mergedSnapshot.contextScope !== 'property') {
+    return {
+      ...mergedSnapshot,
+      trackingId: undefined,
+      propertyName: undefined,
+      trackingIdSource: undefined,
+      propertyNameSource: undefined,
+      propertyContextVerified: false,
+    };
+  }
+
+  return mergedSnapshot;
 };
 
 const emitSnapshot = () => {
