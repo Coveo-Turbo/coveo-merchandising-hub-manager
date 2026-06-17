@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
   const isExtensionBuild = mode === 'extension';
 
   return {
-    base: './',
+    base: isExtensionBuild ? './' : '/',
     server: {
       port: 3000,
       host: '0.0.0.0',

@@ -210,6 +210,7 @@ export interface CsvRow {
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error';
+export type AppPage = 'manager' | 'docs' | 'updates';
 export type AppSection = 'connection' | 'listings' | 'global-config' | 'context-mappings' | 'rules' | 'maintenance';
 export type ListingStep = 1 | 2 | 3 | 4;
 export type GlobalConfigType = 'search' | 'listing' | 'product-suggest' | 'recommendation';
