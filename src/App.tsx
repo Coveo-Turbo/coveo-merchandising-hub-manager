@@ -33,15 +33,19 @@ import {
 } from '@coveord/plasma-react-icons';
 import type {ApiTransport, ContextResolver, SessionStore} from './core/contracts';
 import {getRequiredSection} from './appRouting';
+import {getLatestExtensionDownloadUrl, getStandaloneDocsUrl, getStandaloneUpdatesUrl} from './core/env';
 import {ConnectionSection} from './features/connection/ConnectionSection';
 import {ContextMappingsSection} from './features/context-mappings/ContextMappingsSection';
+import {DocsPage} from './features/docs/DocsPage';
 import {GlobalConfigSection} from './features/global-config/GlobalConfigSection';
 import {ListingsSection} from './features/listings/ListingsSection';
 import {MaintenanceSection} from './features/maintenance/MaintenanceSection';
 import {RulesSection} from './features/rules/RulesSection';
+import {UpdatesPage} from './features/updates/UpdatesPage';
+import {useAppPage} from './hooks/useAppPage';
 import {useManagerController} from './hooks/useManagerController';
 import {useUrlSection} from './hooks/useUrlSection';
-import type {AppSection, EmbeddedAppearance} from './types';
+import type {AppPage, AppSection, EmbeddedAppearance} from './types';
 
 export interface AppProps {
   runtime: 'standalone' | 'extension';
@@ -128,8 +132,7 @@ const sectionlessConnectionMessage =
   'Refresh Hub context to reuse the current page session, or open the connection workspace to connect manually.';
 
 const embeddedBoldWeight = 'var(--coveo-fw-bold, 600)';
-const extensionReleaseDownloadUrl =
-  'https://github.com/Coveo-Turbo/coveo-merchandising-hub-manager/releases/latest/download/cmh-manager-extension.zip';
+const extensionReleaseDownloadUrl = getLatestExtensionDownloadUrl();
 
 const embeddedTabsStyles = {
   root: {
@@ -150,22 +153,87 @@ const embeddedTabsStyles = {
   },
 };
 
+const publicPageDescriptions: Record<Exclude<AppPage, 'manager'>, string> = {
+  docs: 'Learn the tool, operating model, and automation flows without opening the manager workspaces first.',
+  updates: 'Follow release notes, extension downloads, and shipped changes from the live GitHub release feed.',
+};
+
+const StandalonePageLinks = ({
+  page,
+  setPage,
+  includeManager = false,
+  onNavigate,
+}: {
+  page: AppPage;
+  setPage: (page: AppPage) => void;
+  includeManager?: boolean;
+  onNavigate?: () => void;
+}) => (
+  <Group gap="sm" wrap="wrap">
+    {includeManager && (
+      <Button
+        variant={page === 'manager' ? 'filled' : 'default'}
+        color={page === 'manager' ? 'violet' : undefined}
+        onClick={() => {
+          setPage('manager');
+          onNavigate?.();
+        }}
+      >
+        Manager
+      </Button>
+    )}
+    <Button
+      variant={page === 'docs' ? 'filled' : 'light'}
+      color="violet"
+      onClick={() => {
+        setPage('docs');
+        onNavigate?.();
+      }}
+    >
+      Docs
+    </Button>
+    <Button
+      variant={page === 'updates' ? 'filled' : 'light'}
+      color="violet"
+      onClick={() => {
+        setPage('updates');
+        onNavigate?.();
+      }}
+    >
+      What&apos;s new
+    </Button>
+  </Group>
+);
+
 export const StandaloneLayout = ({
   controller,
+  page,
+  setPage,
   section,
   setSection,
   onExitEmbedded,
 }: {
   controller: ReturnType<typeof useManagerController>;
+  page: AppPage;
+  setPage: (page: AppPage) => void;
   section: AppSection;
   setSection: (section: AppSection) => void;
   onExitEmbedded?: () => void;
 }) => {
   const [mobileNavOpened, {close: closeMobileNav, toggle: toggleMobileNav}] = useDisclosure(false);
+  const isPublicPage = page !== 'manager';
   const hasTrackingSelector = Boolean(controller.session && controller.availableTrackingIds.length > 0);
   const hasExtensionDownload = !onExitEmbedded;
-  const hasHeaderActions = hasTrackingSelector || hasExtensionDownload || Boolean(controller.session) || Boolean(onExitEmbedded);
-  const mobileHeaderHeight = hasHeaderActions ? 156 : 88;
+  const hasUtilityActions = hasTrackingSelector || hasExtensionDownload || Boolean(controller.session) || Boolean(onExitEmbedded);
+  const mobileHeaderHeight = isPublicPage ? 172 : hasUtilityActions ? 248 : 200;
+  const desktopHeaderHeight = isPublicPage ? 104 : 128;
+  const publicPageDescription = page === 'manager' ? null : publicPageDescriptions[page];
+
+  useEffect(() => {
+    if (isPublicPage) {
+      closeMobileNav();
+    }
+  }, [closeMobileNav, isPublicPage]);
 
   const trackingSelect = (
     <Select
@@ -180,145 +248,190 @@ export const StandaloneLayout = ({
 
   return (
     <AppShell
-      header={{height: {base: mobileHeaderHeight, sm: 80}}}
-      navbar={{width: 280, breakpoint: 'sm', collapsed: {mobile: !mobileNavOpened}}}
+      header={{height: {base: mobileHeaderHeight, sm: desktopHeaderHeight}}}
+      navbar={{width: 280, breakpoint: 'sm', collapsed: {mobile: isPublicPage || !mobileNavOpened, desktop: isPublicPage}}}
       padding={{base: 'md', sm: 'lg'}}
     >
       <AppShell.Header>
-        <Stack h="100%" px="lg" py="sm" gap="xs" justify="center">
-          <Group justify="space-between" wrap="nowrap" gap="md">
-            <Group gap="md" wrap="nowrap" style={{minWidth: 0, flex: 1}}>
-              <Burger hiddenFrom="sm" opened={mobileNavOpened} onClick={toggleMobileNav} size="sm" aria-label="Toggle navigation" />
-              <Image src="/coveo-logo.svg" alt="Coveo" h={32} w={32} fit="contain" style={{flexShrink: 0}} />
-              <Stack gap={0} style={{minWidth: 0}}>
-                <Text fw={700} style={{minWidth: 0, lineHeight: 1.2}}>
-                  Coveo Merchandising Hub Manager
-                </Text>
-                <Text
-                  size="xs"
-                  c="dimmed"
-                  style={{cursor: 'pointer', lineHeight: 1.2, userSelect: 'none'}}
-                  onClick={controller.handleVersionClick}
-                  title="Click five times to toggle developer mode"
-                >
-                  Version {__APP_VERSION__}
-                </Text>
-              </Stack>
-            </Group>
-
-            <Group gap="sm" wrap="nowrap" visibleFrom="sm">
-              {hasExtensionDownload && (
-                <Button
-                  component="a"
-                  href={extensionReleaseDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="light"
-                  color="violet"
-                  leftSection={<IconDownload size={16} />}
-                >
-                  Download extension
-                </Button>
-              )}
-              {hasTrackingSelector && (
-                <Group gap="xs" wrap="nowrap">
-                  <Text size="sm" c="dimmed">
-                    Tracking ID
+        {isPublicPage ? (
+          <Stack h="100%" px="lg" py="sm" gap="sm" justify="center">
+            <Group justify="space-between" align="center" wrap="wrap" gap="md">
+              <Group gap="md" wrap="nowrap" style={{minWidth: 0, flex: 1}}>
+                <Image src="/coveo-logo.svg" alt="Coveo" h={32} w={32} fit="contain" style={{flexShrink: 0}} />
+                <Stack gap={0} style={{minWidth: 0}}>
+                  <Text fw={700} style={{minWidth: 0, lineHeight: 1.2}}>
+                    Coveo Merchandising Hub Manager
                   </Text>
-                  <div style={{width: '18rem'}}>{trackingSelect}</div>
-                </Group>
-              )}
-              {controller.session && (
-                <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
-                  Disconnect
-                </Button>
-              )}
-              {onExitEmbedded && (
-                <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
-                  Return to Hub
-                </Button>
-              )}
-            </Group>
-          </Group>
-
-          {hasHeaderActions && (
-            <Stack hiddenFrom="sm" gap="xs">
-              {hasTrackingSelector && (
-                <Stack gap={4}>
-                  <Text size="sm" c="dimmed">
-                    Tracking ID
+                  <Text size="sm" c="dimmed" style={{minWidth: 0, lineHeight: 1.4}}>
+                    {publicPageDescription}
                   </Text>
-                  {trackingSelect}
                 </Stack>
-              )}
+              </Group>
 
-              {(controller.session || onExitEmbedded) && (
-                <Group grow>
-                  {controller.session && (
-                    <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
-                      Disconnect
-                    </Button>
-                  )}
-                  {onExitEmbedded && (
-                    <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
-                      Return to Hub
-                    </Button>
-                  )}
-                </Group>
-              )}
+              <Group gap="sm" wrap="wrap">
+                {hasExtensionDownload && (
+                  <Button
+                    component="a"
+                    href={extensionReleaseDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="light"
+                    color="violet"
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download extension
+                  </Button>
+                )}
+                <StandalonePageLinks page={page} setPage={setPage} includeManager />
+              </Group>
+            </Group>
+          </Stack>
+        ) : (
+          <Stack h="100%" px="lg" py="sm" gap="xs" justify="center">
+            <Group justify="space-between" wrap="nowrap" gap="md">
+              <Group gap="md" wrap="nowrap" style={{minWidth: 0, flex: 1}}>
+                <Burger hiddenFrom="sm" opened={mobileNavOpened} onClick={toggleMobileNav} size="sm" aria-label="Toggle navigation" />
+                <Image src="/coveo-logo.svg" alt="Coveo" h={32} w={32} fit="contain" style={{flexShrink: 0}} />
+                <Stack gap={0} style={{minWidth: 0}}>
+                  <Text fw={700} style={{minWidth: 0, lineHeight: 1.2}}>
+                    Coveo Merchandising Hub Manager
+                  </Text>
+                  <Text
+                    size="xs"
+                    c="dimmed"
+                    style={{cursor: 'pointer', lineHeight: 1.2, userSelect: 'none'}}
+                    onClick={controller.handleVersionClick}
+                    title="Click five times to toggle developer mode"
+                  >
+                    Version {__APP_VERSION__}
+                  </Text>
+                </Stack>
+              </Group>
 
-              {hasExtensionDownload && (
-                <Button
-                  component="a"
-                  href={extensionReleaseDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="light"
-                  color="violet"
-                  leftSection={<IconDownload size={16} />}
-                >
-                  Download extension
-                </Button>
-              )}
-            </Stack>
-          )}
-        </Stack>
+              <Group gap="sm" wrap="nowrap" visibleFrom="sm">
+                {hasExtensionDownload && (
+                  <Button
+                    component="a"
+                    href={extensionReleaseDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="light"
+                    color="violet"
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download extension
+                  </Button>
+                )}
+                {hasTrackingSelector && (
+                  <Group gap="xs" wrap="nowrap">
+                    <Text size="sm" c="dimmed">
+                      Tracking ID
+                    </Text>
+                    <div style={{width: '18rem'}}>{trackingSelect}</div>
+                  </Group>
+                )}
+                {controller.session && (
+                  <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
+                    Disconnect
+                  </Button>
+                )}
+                {onExitEmbedded && (
+                  <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
+                    Return to Hub
+                  </Button>
+                )}
+              </Group>
+            </Group>
+
+            {hasUtilityActions && (
+              <Stack hiddenFrom="sm" gap="xs">
+                {hasTrackingSelector && (
+                  <Stack gap={4}>
+                    <Text size="sm" c="dimmed">
+                      Tracking ID
+                    </Text>
+                    {trackingSelect}
+                  </Stack>
+                )}
+
+                {(controller.session || onExitEmbedded) && (
+                  <Group grow>
+                    {controller.session && (
+                      <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
+                        Disconnect
+                      </Button>
+                    )}
+                    {onExitEmbedded && (
+                      <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
+                        Return to Hub
+                      </Button>
+                    )}
+                  </Group>
+                )}
+
+                {hasExtensionDownload && (
+                  <Button
+                    component="a"
+                    href={extensionReleaseDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="light"
+                    color="violet"
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download extension
+                  </Button>
+                )}
+              </Stack>
+            )}
+
+            <StandalonePageLinks page={page} setPage={setPage} onNavigate={closeMobileNav} />
+          </Stack>
+        )}
       </AppShell.Header>
 
       <AppShell.Navbar p="md">
-        <Stack gap="xs">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.id}
-              label={item.label}
-              leftSection={<item.icon size={20} />}
-              active={section === item.id}
-              onClick={() => {
-                setSection(item.id);
-                closeMobileNav();
-              }}
-            />
-          ))}
-        </Stack>
+        {page === 'manager' ? (
+          <Stack gap="xs">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.id}
+                label={item.label}
+                leftSection={<item.icon size={20} />}
+                active={page === 'manager' && section === item.id}
+                onClick={() => {
+                  setPage('manager');
+                  setSection(item.id);
+                  closeMobileNav();
+                }}
+              />
+            ))}
+          </Stack>
+        ) : null}
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Stack gap="lg">
-          <PlasmaHeader
-            variant="secondary"
-            description={
-              controller.session
-                ? `${controller.session.organizationName || controller.session.organizationId} · ${controller.session.propertyName || controller.session.trackingId}`
-                : 'Connect manually to start managing a commerce organization.'
-            }
-          >
-            {navItems.find((item) => item.id === section)?.label || 'CMH Manager'}
-          </PlasmaHeader>
+        {page === 'manager' ? (
+          <Stack gap="lg">
+            {renderStatusAlert(controller)}
+            <PlasmaHeader
+              variant="secondary"
+              description={
+                controller.session
+                  ? `${controller.session.organizationName || controller.session.organizationId} · ${controller.session.propertyName || controller.session.trackingId}`
+                  : 'Connect manually to start managing a commerce organization.'
+              }
+            >
+              {navItems.find((item) => item.id === section)?.label || 'CMH Manager'}
+            </PlasmaHeader>
 
-          {renderStatusAlert(controller)}
-
-          {renderSection(section, controller)}
-        </Stack>
+            {renderSection(section, controller)}
+          </Stack>
+        ) : (
+          <Stack gap="lg" className="cmh-public-page">
+            {page === 'docs' ? <DocsPage /> : <UpdatesPage />}
+          </Stack>
+        )}
       </AppShell.Main>
     </AppShell>
   );
@@ -346,6 +459,8 @@ export const EmbeddedLayout = ({
       placeholder="Select tracking ID"
     />
   ) : null;
+  const docsUrl = getStandaloneDocsUrl();
+  const updatesUrl = getStandaloneUpdatesUrl();
 
   return (
     <Stack gap="md" p="md">
@@ -386,6 +501,12 @@ export const EmbeddedLayout = ({
 
               <Group gap="sm" wrap="wrap">
                 {embeddedTrackingSelect ? <div style={{minWidth: '16rem'}}>{embeddedTrackingSelect}</div> : null}
+                <Button component="a" href={docsUrl} target="_blank" rel="noreferrer" variant="default">
+                  Docs
+                </Button>
+                <Button component="a" href={updatesUrl} target="_blank" rel="noreferrer" variant="default">
+                  What&apos;s new
+                </Button>
                 <Button
                   variant="light"
                   color="violet"
@@ -435,6 +556,7 @@ export const EmbeddedLayout = ({
 
 export const AppContent = ({runtime, transport, contextResolver, sessionStore, onExitEmbedded}: AppProps) => {
   const controller = useManagerController({runtime, transport, contextResolver, sessionStore});
+  const [page, setPage] = useAppPage();
   const [section, setSection] = useUrlSection(runtime === 'extension');
   const lastAutoLoadedGlobalConfigRef = useRef<string | null>(null);
   const lastAutoLoadedContextMappingsRef = useRef<string | null>(null);
@@ -447,13 +569,18 @@ export const AppContent = ({runtime, transport, contextResolver, sessionStore, o
   const sessionPlatformUrl = controller.session?.platformUrl;
 
   useEffect(() => {
-    const requiredSection = getRequiredSection(section, controller.hasResolvedInitialContext, Boolean(controller.session));
+    const requiredSection = getRequiredSection(
+      section,
+      controller.hasResolvedInitialContext,
+      Boolean(controller.session),
+      page,
+    );
     if (requiredSection === section) {
       return;
     }
 
     setSection(requiredSection);
-  }, [controller.hasResolvedInitialContext, controller.session, section, setSection]);
+  }, [controller.hasResolvedInitialContext, controller.session, page, section, setSection]);
 
   useEffect(() => {
     fetchGlobalConfigRef.current = controller.fetchGlobalConfig;
@@ -465,6 +592,7 @@ export const AppContent = ({runtime, transport, contextResolver, sessionStore, o
 
   useEffect(() => {
     if (
+      page !== 'manager' ||
       section !== 'global-config' ||
       !sessionOrganizationId ||
       !sessionTrackingId ||
@@ -490,6 +618,7 @@ export const AppContent = ({runtime, transport, contextResolver, sessionStore, o
     lastAutoLoadedGlobalConfigRef.current = autoLoadKey;
     void fetchGlobalConfigRef.current();
   }, [
+    page,
     section,
     globalConfigType,
     sessionOrganizationId,
@@ -500,6 +629,7 @@ export const AppContent = ({runtime, transport, contextResolver, sessionStore, o
 
   useEffect(() => {
     if (
+      page !== 'manager' ||
       section !== 'context-mappings' ||
       !sessionOrganizationId ||
       !sessionTrackingId ||
@@ -518,12 +648,19 @@ export const AppContent = ({runtime, transport, contextResolver, sessionStore, o
 
     lastAutoLoadedContextMappingsRef.current = autoLoadKey;
     void fetchContextMappingsRef.current();
-  }, [section, sessionOrganizationId, sessionTrackingId, sessionAccessToken, sessionPlatformUrl]);
+  }, [page, section, sessionOrganizationId, sessionTrackingId, sessionAccessToken, sessionPlatformUrl]);
 
   return runtime === 'extension' ? (
     <EmbeddedLayout controller={controller} section={section} setSection={setSection} onExitEmbedded={onExitEmbedded} />
   ) : (
-    <StandaloneLayout controller={controller} section={section} setSection={setSection} onExitEmbedded={onExitEmbedded} />
+    <StandaloneLayout
+      controller={controller}
+      page={page}
+      setPage={setPage}
+      section={section}
+      setSection={setSection}
+      onExitEmbedded={onExitEmbedded}
+    />
   );
 };
 

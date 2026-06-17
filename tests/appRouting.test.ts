@@ -12,4 +12,9 @@ describe('app connection routing', () => {
     expect(getRequiredSection('global-config', false, false)).toBe('global-config');
     expect(getRequiredSection('global-config', true, true)).toBe('global-config');
   });
+
+  it('does not gate public docs or updates pages behind the connection workspace', () => {
+    expect(getRequiredSection('listings', true, false, 'docs')).toBe('listings');
+    expect(getRequiredSection('global-config', true, false, 'updates')).toBe('global-config');
+  });
 });
