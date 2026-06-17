@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import Papa from 'papaparse';
 import type {ApiTransport, ContextResolver, SessionStore} from '../core/contracts';
 import {
@@ -123,18 +123,46 @@ const createDefaultGlobalQueryConfig = (
   configurationModel: createDefaultQueryConfigurationModel(solutionType),
 });
 
-const extractQueryConfigurationModel = (value: JsonObject): QueryConfigData => {
+const sanitizeQueryConfigurationModel = (
+  solutionType: QueryConfigSolutionType,
+  configurationModel: QueryConfigData,
+): QueryConfigData => {
+  if (solutionType !== 'recommendation') {
+    return configurationModel;
+  }
+
+  return {
+    ...(configurationModel.perPage !== undefined ? {perPage: configurationModel.perPage} : {}),
+    ...(configurationModel.additionalFields !== undefined ? {additionalFields: configurationModel.additionalFields} : {}),
+  };
+};
+
+const sanitizeGlobalConfigData = (
+  globalConfigType: GlobalConfigType,
+  value: GlobalConfigEditorData,
+): GlobalConfigEditorData => {
+  if (globalConfigType === 'product-suggest' || !isCommerceQueryConfiguration(value)) {
+    return value;
+  }
+
+  return {
+    ...value,
+    configurationModel: sanitizeQueryConfigurationModel(value.solutionType, value.configurationModel),
+  };
+};
+
+const extractQueryConfigurationModel = (value: JsonObject, solutionType: QueryConfigSolutionType): QueryConfigData => {
   const configurationModel = value.configurationModel;
   if (configurationModel && typeof configurationModel === 'object' && !Array.isArray(configurationModel)) {
-    return configurationModel as QueryConfigData;
+    return sanitizeQueryConfigurationModel(solutionType, configurationModel as QueryConfigData);
   }
 
   const legacyQueryConfiguration = value.queryConfiguration;
   if (legacyQueryConfiguration && typeof legacyQueryConfiguration === 'object' && !Array.isArray(legacyQueryConfiguration)) {
-    return legacyQueryConfiguration as QueryConfigData;
+    return sanitizeQueryConfigurationModel(solutionType, legacyQueryConfiguration as QueryConfigData);
   }
 
-  return value as QueryConfigData;
+  return sanitizeQueryConfigurationModel(solutionType, value as QueryConfigData);
 };
 
 const isCommerceQueryConfiguration = (
@@ -200,6 +228,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   const [showManualConnection, setShowManualConnection] = useState(runtime === 'standalone');
   const [devMode, setDevMode] = useState(false);
   const [clickCount, setClickCount] = useState(0);
+  const globalConfigDataRef = useRef<GlobalConfigEditorData | null>(null);
 
   const availableTrackingIds = session?.trackingIds ?? [];
   const isSessionReady = Boolean(session?.organizationId && session.accessToken && session.trackingId);
@@ -213,6 +242,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
       ? ((productSuggestConfigData?.queryConfiguration || productSuggestConfigData || null) as QueryConfigData | null)
       : queryConfigurationData
     : null;
+
+  useEffect(() => {
+    globalConfigDataRef.current = globalConfigData;
+  }, [globalConfigData]);
 
   const persistSession = useCallback(async (nextSession: SessionContext | null) => {
     if (!sessionStore) {
@@ -616,8 +649,9 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
         }
       }
 
-      setGlobalConfigData(data);
-      setGlobalConfigString(JSON.stringify(data, null, 2));
+      const sanitizedData = sanitizeGlobalConfigData(globalConfigType, data);
+      setGlobalConfigData(sanitizedData);
+      setGlobalConfigString(JSON.stringify(sanitizedData, null, 2));
     } catch (error) {
       setStatus({type: 'error', message: `Failed to fetch config: ${getErrorMessage(error, 'Unknown error.')}`});
     } finally {
@@ -640,7 +674,7 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
         const solutionType = toQueryConfigSolutionType(globalConfigType);
         const queryConfigPayload: CommerceQueryConfigurationRequestModel = {
           ...createDefaultGlobalQueryConfig(session, solutionType),
-          configurationModel: extractQueryConfigurationModel(parsed),
+          configurationModel: extractQueryConfigurationModel(parsed, solutionType),
         };
 
         if (globalConfigExists === false) {
@@ -661,9 +695,10 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
       }
 
       if (nextGlobalConfigData) {
+        const sanitizedNextGlobalConfigData = sanitizeGlobalConfigData(globalConfigType, nextGlobalConfigData);
         setGlobalConfigExists(true);
-        setGlobalConfigData(nextGlobalConfigData);
-        setGlobalConfigString(JSON.stringify(nextGlobalConfigData, null, 2));
+        setGlobalConfigData(sanitizedNextGlobalConfigData);
+        setGlobalConfigString(JSON.stringify(sanitizedNextGlobalConfigData, null, 2));
       }
 
       setStatus({type: 'success', message: 'Configuration saved successfully.'});
@@ -862,30 +897,36 @@ export const useManagerController = ({runtime, transport, contextResolver, sessi
   };
 
   const updateGlobalConfigData = (nextValue: GlobalConfigEditorData) => {
+    globalConfigDataRef.current = nextValue;
     setGlobalConfigData(nextValue);
     setGlobalConfigString(JSON.stringify(nextValue, null, 2));
   };
 
   const updateQueryConfigField = (key: keyof QueryConfigData, value: QueryConfigData[keyof QueryConfigData]) => {
-    if (!globalConfigData) {
+    const currentGlobalConfigData = globalConfigDataRef.current;
+    if (!currentGlobalConfigData) {
       return;
     }
 
     if (globalConfigType === 'product-suggest') {
       updateGlobalConfigData({
-        ...(productSuggestConfigData ?? {}),
+        ...((!isCommerceQueryConfiguration(currentGlobalConfigData) ? currentGlobalConfigData : {}) ?? {}),
         queryConfiguration: {
-          ...(productSuggestConfigData?.queryConfiguration ?? {}),
+          ...((!isCommerceQueryConfiguration(currentGlobalConfigData) ? currentGlobalConfigData.queryConfiguration : undefined) ?? {}),
           [key]: value,
         },
       });
       return;
     }
 
+    const currentQueryConfigurationData = isCommerceQueryConfiguration(currentGlobalConfigData)
+      ? currentGlobalConfigData.configurationModel
+      : {};
+
     updateGlobalConfigData({
-      ...globalConfigData,
+      ...currentGlobalConfigData,
       configurationModel: {
-        ...(queryConfigurationData ?? {}),
+        ...currentQueryConfigurationData,
         [key]: value,
       },
     });

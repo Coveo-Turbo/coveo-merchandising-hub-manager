@@ -144,4 +144,92 @@ describe('useManagerController global config saves', () => {
     expect(mockUpdateGlobalQueryConfig).toHaveBeenCalledTimes(1);
     expect(mockCreateGlobalQueryConfig).not.toHaveBeenCalled();
   });
+
+  it('sanitizes recommendation configs down to perPage and additionalFields on fetch and save', async () => {
+    mockGetGlobalQueryConfig.mockResolvedValue({
+      trackingId: 'storefront',
+      solutionType: 'recommendation',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 8,
+        additionalFields: ['ec_name'],
+        grouping: {type: 'none'},
+        facets: {enableIndexFacetOrdering: true},
+        sorts: [{sortCriteria: 'relevance'}],
+      },
+    });
+    mockUpdateGlobalQueryConfig.mockResolvedValue({
+      trackingId: 'storefront',
+      solutionType: 'recommendation',
+      isGlobal: true,
+      configurationModel: {
+        perPage: 10,
+        additionalFields: ['ec_name', 'ec_brand'],
+      },
+    });
+
+    const {result} = renderHook(() =>
+      useManagerController({
+        runtime: 'standalone',
+        transport: {request: vi.fn()},
+        contextResolver: {
+          resolve: vi.fn().mockResolvedValue(null),
+          refresh: vi.fn().mockResolvedValue(session),
+          disconnect: vi.fn(),
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.refreshResolvedContext();
+    });
+
+    await waitFor(() => expect(result.current.session?.trackingId).toBe('storefront'));
+
+    await act(async () => {
+      result.current.setGlobalConfigType('recommendation');
+      await result.current.fetchGlobalConfig();
+    });
+
+    expect(result.current.qc).toEqual({
+      perPage: 8,
+      additionalFields: ['ec_name'],
+    });
+    expect(result.current.globalConfigString).not.toContain('grouping');
+    expect(result.current.globalConfigString).not.toContain('facets');
+    expect(result.current.globalConfigString).not.toContain('sorts');
+
+    await act(async () => {
+      result.current.updateQueryConfigField('perPage', 10);
+      result.current.updateQueryConfigField('additionalFields', ['ec_name', 'ec_brand']);
+    });
+
+    await waitFor(() =>
+      expect(result.current.qc).toEqual({
+        perPage: 10,
+        additionalFields: ['ec_name', 'ec_brand'],
+      }),
+    );
+
+    await act(async () => {
+      await result.current.saveGlobalConfig();
+    });
+
+    expect(mockUpdateGlobalQueryConfig).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        trackingId: 'storefront',
+        solutionType: 'recommendation',
+        isGlobal: true,
+        configurationModel: {
+          perPage: 10,
+          additionalFields: ['ec_name', 'ec_brand'],
+        },
+      },
+      expect.anything(),
+    );
+    expect(result.current.globalConfigString).not.toContain('grouping');
+    expect(result.current.globalConfigString).not.toContain('facets');
+    expect(result.current.globalConfigString).not.toContain('sorts');
+  });
 });
