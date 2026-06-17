@@ -9,6 +9,36 @@ body {
   background: linear-gradient(180deg, #f8f7ff 0%, #f4f5f8 100%);
 }
 
+.cmh-public-page {
+  width: min(100%, 1200px);
+  margin: 0 auto;
+}
+
+.cmh-docs-layout {
+  display: grid;
+  grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.cmh-docs-sidebar {
+  position: sticky;
+  top: 6.5rem;
+}
+
+.cmh-docs-content {
+  min-width: 0;
+}
+
+.cmh-docs-prose {
+  max-width: 74ch;
+}
+
+.cmh-docs-nav-button {
+  justify-content: flex-start;
+  text-align: left;
+}
+
 .cmh-markdown {
   color: var(--mantine-color-text);
   line-height: 1.7;
@@ -103,4 +133,18 @@ body {
 
 .cmh-markdown thead th {
   background: rgba(148, 163, 184, 0.14);
+}
+
+@media (max-width: 62rem) {
+  .cmh-docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cmh-docs-sidebar {
+    position: static;
+  }
+
+  .cmh-docs-prose {
+    max-width: none;
+  }
 }

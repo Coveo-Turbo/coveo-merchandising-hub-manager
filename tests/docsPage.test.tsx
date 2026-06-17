@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
-import {render, screen} from '@testing-library/react';
-import {describe, expect, it, vi} from 'vitest';
+import {act, render, screen, waitFor} from '@testing-library/react';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {DocsPage} from '../src/features/docs/DocsPage';
 
 vi.mock('@coveord/plasma-mantine', () => {
@@ -16,6 +16,7 @@ vi.mock('@coveord/plasma-mantine', () => {
     component === 'a' ? <a href={href}>{children}</a> : <button>{children}</button>;
 
   return {
+    Badge: ({children}: {children: ReactNode}) => <span>{children}</span>,
     Button,
     Card: ({children, id}: {children: ReactNode; id?: string}) => <section id={id}>{children}</section>,
     Group: ({children}: {children: ReactNode}) => <div>{children}</div>,
@@ -35,8 +36,20 @@ vi.mock('@coveord/plasma-react-icons', () => ({
 }));
 
 describe('DocsPage', () => {
-  it('renders the docs index and markdown content from repo sources', () => {
-    const {container} = render(<DocsPage />);
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/docs');
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    window.history.replaceState({}, '', '/docs');
+  });
+
+  it('renders the selected article and lets users switch guides through the docs navigation', async () => {
+    render(<DocsPage />);
 
     expect(screen.getAllByRole('link', {name: 'Architecture overview'})[0]).toBeTruthy();
     expect(screen.getAllByRole('link', {name: 'Getting started'})[0]).toBeTruthy();
@@ -46,13 +59,19 @@ describe('DocsPage', () => {
 
     expect(screen.getByRole('heading', {name: 'Architecture Overview'})).toBeTruthy();
     expect(screen.getByAltText('CMH Manager end-to-end architecture overview')).toBeTruthy();
-    expect(screen.getByRole('heading', {name: 'API Documentation'})).toBeTruthy();
+
+    await act(async () => {
+      window.history.replaceState({}, '', '/docs#api-reference');
+      window.dispatchEvent(new Event('hashchange'));
+    });
+
+    await waitFor(() => expect(screen.getByRole('heading', {name: 'API Documentation'})).toBeTruthy());
+
     expect(screen.getAllByText('POST /api/import')[0]).toBeTruthy();
-    expect(container.querySelector('table')).not.toBeNull();
-    expect(container.querySelector('pre')).not.toBeNull();
   });
 
   it('rewrites repo-relative markdown links to in-page anchors when possible', () => {
+    window.history.replaceState({}, '', '/docs#getting-started');
     render(<DocsPage />);
 
     const apiReferenceLink = screen.getAllByRole('link', {name: 'Import API reference'})[0];

@@ -153,12 +153,53 @@ const embeddedTabsStyles = {
   },
 };
 
-const StandalonePageLinks = ({page, setPage}: {page: AppPage; setPage: (page: AppPage) => void}) => (
+const publicPageDescriptions: Record<Exclude<AppPage, 'manager'>, string> = {
+  docs: 'Learn the tool, operating model, and automation flows without opening the manager workspaces first.',
+  updates: 'Follow release notes, extension downloads, and shipped changes from the live GitHub release feed.',
+};
+
+const StandalonePageLinks = ({
+  page,
+  setPage,
+  includeManager = false,
+  onNavigate,
+}: {
+  page: AppPage;
+  setPage: (page: AppPage) => void;
+  includeManager?: boolean;
+  onNavigate?: () => void;
+}) => (
   <Group gap="sm" wrap="wrap">
-    <Button variant={page === 'docs' ? 'filled' : 'light'} color="violet" onClick={() => setPage('docs')}>
+    {includeManager && (
+      <Button
+        variant={page === 'manager' ? 'filled' : 'default'}
+        color={page === 'manager' ? 'violet' : undefined}
+        onClick={() => {
+          setPage('manager');
+          onNavigate?.();
+        }}
+      >
+        Manager
+      </Button>
+    )}
+    <Button
+      variant={page === 'docs' ? 'filled' : 'light'}
+      color="violet"
+      onClick={() => {
+        setPage('docs');
+        onNavigate?.();
+      }}
+    >
       Docs
     </Button>
-    <Button variant={page === 'updates' ? 'filled' : 'light'} color="violet" onClick={() => setPage('updates')}>
+    <Button
+      variant={page === 'updates' ? 'filled' : 'light'}
+      color="violet"
+      onClick={() => {
+        setPage('updates');
+        onNavigate?.();
+      }}
+    >
       What&apos;s new
     </Button>
   </Group>
@@ -180,10 +221,19 @@ export const StandaloneLayout = ({
   onExitEmbedded?: () => void;
 }) => {
   const [mobileNavOpened, {close: closeMobileNav, toggle: toggleMobileNav}] = useDisclosure(false);
+  const isPublicPage = page !== 'manager';
   const hasTrackingSelector = Boolean(controller.session && controller.availableTrackingIds.length > 0);
   const hasExtensionDownload = !onExitEmbedded;
   const hasUtilityActions = hasTrackingSelector || hasExtensionDownload || Boolean(controller.session) || Boolean(onExitEmbedded);
-  const mobileHeaderHeight = hasUtilityActions ? 248 : 200;
+  const mobileHeaderHeight = isPublicPage ? 172 : hasUtilityActions ? 248 : 200;
+  const desktopHeaderHeight = isPublicPage ? 104 : 128;
+  const publicPageDescription = page === 'manager' ? null : publicPageDescriptions[page];
+
+  useEffect(() => {
+    if (isPublicPage) {
+      closeMobileNav();
+    }
+  }, [closeMobileNav, isPublicPage]);
 
   const trackingSelect = (
     <Select
@@ -198,155 +248,190 @@ export const StandaloneLayout = ({
 
   return (
     <AppShell
-      header={{height: {base: mobileHeaderHeight, sm: 128}}}
-      navbar={{width: 280, breakpoint: 'sm', collapsed: {mobile: !mobileNavOpened}}}
+      header={{height: {base: mobileHeaderHeight, sm: desktopHeaderHeight}}}
+      navbar={{width: 280, breakpoint: 'sm', collapsed: {mobile: isPublicPage || !mobileNavOpened, desktop: isPublicPage}}}
       padding={{base: 'md', sm: 'lg'}}
     >
       <AppShell.Header>
-        <Stack h="100%" px="lg" py="sm" gap="xs" justify="center">
-          <Group justify="space-between" wrap="nowrap" gap="md">
-            <Group gap="md" wrap="nowrap" style={{minWidth: 0, flex: 1}}>
-              <Burger hiddenFrom="sm" opened={mobileNavOpened} onClick={toggleMobileNav} size="sm" aria-label="Toggle navigation" />
-              <Image src="/coveo-logo.svg" alt="Coveo" h={32} w={32} fit="contain" style={{flexShrink: 0}} />
-              <Stack gap={0} style={{minWidth: 0}}>
-                <Text fw={700} style={{minWidth: 0, lineHeight: 1.2}}>
-                  Coveo Merchandising Hub Manager
-                </Text>
-                <Text
-                  size="xs"
-                  c="dimmed"
-                  style={{cursor: 'pointer', lineHeight: 1.2, userSelect: 'none'}}
-                  onClick={controller.handleVersionClick}
-                  title="Click five times to toggle developer mode"
-                >
-                  Version {__APP_VERSION__}
-                </Text>
-              </Stack>
-            </Group>
-
-            <Group gap="sm" wrap="nowrap" visibleFrom="sm">
-              {hasExtensionDownload && (
-                <Button
-                  component="a"
-                  href={extensionReleaseDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="light"
-                  color="violet"
-                  leftSection={<IconDownload size={16} />}
-                >
-                  Download extension
-                </Button>
-              )}
-              {hasTrackingSelector && (
-                <Group gap="xs" wrap="nowrap">
-                  <Text size="sm" c="dimmed">
-                    Tracking ID
+        {isPublicPage ? (
+          <Stack h="100%" px="lg" py="sm" gap="sm" justify="center">
+            <Group justify="space-between" align="center" wrap="wrap" gap="md">
+              <Group gap="md" wrap="nowrap" style={{minWidth: 0, flex: 1}}>
+                <Image src="/coveo-logo.svg" alt="Coveo" h={32} w={32} fit="contain" style={{flexShrink: 0}} />
+                <Stack gap={0} style={{minWidth: 0}}>
+                  <Text fw={700} style={{minWidth: 0, lineHeight: 1.2}}>
+                    Coveo Merchandising Hub Manager
                   </Text>
-                  <div style={{width: '18rem'}}>{trackingSelect}</div>
-                </Group>
-              )}
-              {controller.session && (
-                <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
-                  Disconnect
-                </Button>
-              )}
-              {onExitEmbedded && (
-                <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
-                  Return to Hub
-                </Button>
-              )}
-            </Group>
-          </Group>
-
-          {hasUtilityActions && (
-            <Stack hiddenFrom="sm" gap="xs">
-              {hasTrackingSelector && (
-                <Stack gap={4}>
-                  <Text size="sm" c="dimmed">
-                    Tracking ID
+                  <Text size="sm" c="dimmed" style={{minWidth: 0, lineHeight: 1.4}}>
+                    {publicPageDescription}
                   </Text>
-                  {trackingSelect}
                 </Stack>
-              )}
+              </Group>
 
-              {(controller.session || onExitEmbedded) && (
-                <Group grow>
-                  {controller.session && (
-                    <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
-                      Disconnect
-                    </Button>
-                  )}
-                  {onExitEmbedded && (
-                    <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
-                      Return to Hub
-                    </Button>
-                  )}
-                </Group>
-              )}
+              <Group gap="sm" wrap="wrap">
+                {hasExtensionDownload && (
+                  <Button
+                    component="a"
+                    href={extensionReleaseDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="light"
+                    color="violet"
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download extension
+                  </Button>
+                )}
+                <StandalonePageLinks page={page} setPage={setPage} includeManager />
+              </Group>
+            </Group>
+          </Stack>
+        ) : (
+          <Stack h="100%" px="lg" py="sm" gap="xs" justify="center">
+            <Group justify="space-between" wrap="nowrap" gap="md">
+              <Group gap="md" wrap="nowrap" style={{minWidth: 0, flex: 1}}>
+                <Burger hiddenFrom="sm" opened={mobileNavOpened} onClick={toggleMobileNav} size="sm" aria-label="Toggle navigation" />
+                <Image src="/coveo-logo.svg" alt="Coveo" h={32} w={32} fit="contain" style={{flexShrink: 0}} />
+                <Stack gap={0} style={{minWidth: 0}}>
+                  <Text fw={700} style={{minWidth: 0, lineHeight: 1.2}}>
+                    Coveo Merchandising Hub Manager
+                  </Text>
+                  <Text
+                    size="xs"
+                    c="dimmed"
+                    style={{cursor: 'pointer', lineHeight: 1.2, userSelect: 'none'}}
+                    onClick={controller.handleVersionClick}
+                    title="Click five times to toggle developer mode"
+                  >
+                    Version {__APP_VERSION__}
+                  </Text>
+                </Stack>
+              </Group>
 
-              {hasExtensionDownload && (
-                <Button
-                  component="a"
-                  href={extensionReleaseDownloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="light"
-                  color="violet"
-                  leftSection={<IconDownload size={16} />}
-                >
-                  Download extension
-                </Button>
-              )}
-            </Stack>
-          )}
+              <Group gap="sm" wrap="nowrap" visibleFrom="sm">
+                {hasExtensionDownload && (
+                  <Button
+                    component="a"
+                    href={extensionReleaseDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="light"
+                    color="violet"
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download extension
+                  </Button>
+                )}
+                {hasTrackingSelector && (
+                  <Group gap="xs" wrap="nowrap">
+                    <Text size="sm" c="dimmed">
+                      Tracking ID
+                    </Text>
+                    <div style={{width: '18rem'}}>{trackingSelect}</div>
+                  </Group>
+                )}
+                {controller.session && (
+                  <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
+                    Disconnect
+                  </Button>
+                )}
+                {onExitEmbedded && (
+                  <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
+                    Return to Hub
+                  </Button>
+                )}
+              </Group>
+            </Group>
 
-          <StandalonePageLinks page={page} setPage={setPage} />
-        </Stack>
+            {hasUtilityActions && (
+              <Stack hiddenFrom="sm" gap="xs">
+                {hasTrackingSelector && (
+                  <Stack gap={4}>
+                    <Text size="sm" c="dimmed">
+                      Tracking ID
+                    </Text>
+                    {trackingSelect}
+                  </Stack>
+                )}
+
+                {(controller.session || onExitEmbedded) && (
+                  <Group grow>
+                    {controller.session && (
+                      <Button variant="default" leftSection={<IconLogout size={16} />} onClick={() => void controller.disconnect()}>
+                        Disconnect
+                      </Button>
+                    )}
+                    {onExitEmbedded && (
+                      <Button variant="light" color="gray" leftSection={<IconX size={16} />} onClick={onExitEmbedded}>
+                        Return to Hub
+                      </Button>
+                    )}
+                  </Group>
+                )}
+
+                {hasExtensionDownload && (
+                  <Button
+                    component="a"
+                    href={extensionReleaseDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="light"
+                    color="violet"
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download extension
+                  </Button>
+                )}
+              </Stack>
+            )}
+
+            <StandalonePageLinks page={page} setPage={setPage} onNavigate={closeMobileNav} />
+          </Stack>
+        )}
       </AppShell.Header>
 
       <AppShell.Navbar p="md">
-        <Stack gap="xs">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.id}
-              label={item.label}
-              leftSection={<item.icon size={20} />}
-              active={page === 'manager' && section === item.id}
-              onClick={() => {
-                setPage('manager');
-                setSection(item.id);
-                closeMobileNav();
-              }}
-            />
-          ))}
-        </Stack>
+        {page === 'manager' ? (
+          <Stack gap="xs">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.id}
+                label={item.label}
+                leftSection={<item.icon size={20} />}
+                active={page === 'manager' && section === item.id}
+                onClick={() => {
+                  setPage('manager');
+                  setSection(item.id);
+                  closeMobileNav();
+                }}
+              />
+            ))}
+          </Stack>
+        ) : null}
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Stack gap="lg">
-          {renderStatusAlert(controller)}
-          {page === 'manager' ? (
-            <>
-              <PlasmaHeader
-                variant="secondary"
-                description={
-                  controller.session
-                    ? `${controller.session.organizationName || controller.session.organizationId} · ${controller.session.propertyName || controller.session.trackingId}`
-                    : 'Connect manually to start managing a commerce organization.'
-                }
-              >
-                {navItems.find((item) => item.id === section)?.label || 'CMH Manager'}
-              </PlasmaHeader>
+        {page === 'manager' ? (
+          <Stack gap="lg">
+            {renderStatusAlert(controller)}
+            <PlasmaHeader
+              variant="secondary"
+              description={
+                controller.session
+                  ? `${controller.session.organizationName || controller.session.organizationId} · ${controller.session.propertyName || controller.session.trackingId}`
+                  : 'Connect manually to start managing a commerce organization.'
+              }
+            >
+              {navItems.find((item) => item.id === section)?.label || 'CMH Manager'}
+            </PlasmaHeader>
 
-              {renderSection(section, controller)}
-            </>
-          ) : page === 'docs' ? (
-            <DocsPage />
-          ) : (
-            <UpdatesPage />
-          )}
-        </Stack>
+            {renderSection(section, controller)}
+          </Stack>
+        ) : (
+          <Stack gap="lg" className="cmh-public-page">
+            {page === 'docs' ? <DocsPage /> : <UpdatesPage />}
+          </Stack>
+        )}
       </AppShell.Main>
     </AppShell>
   );

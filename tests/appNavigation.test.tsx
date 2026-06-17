@@ -193,6 +193,8 @@ describe('app navigation', () => {
     );
 
     expect(screen.getByText('Docs page')).toBeTruthy();
+    expect(screen.queryByRole('button', {name: 'Listings'})).toBeNull();
+    expect(screen.getByRole('button', {name: 'Manager'})).toBeTruthy();
   });
 
   it('uses standalone docs and updates URLs for the embedded top actions', () => {

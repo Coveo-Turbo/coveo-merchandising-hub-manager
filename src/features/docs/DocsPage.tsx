@@ -1,4 +1,5 @@
-import {Button, Card, Group, Header, Stack, Text} from '@coveord/plasma-mantine';
+import {useEffect, useMemo, useState} from 'react';
+import {Badge, Button, Card, Group, Header, Stack, Text} from '@coveord/plasma-mantine';
 import {IconExternalLink} from '@coveord/plasma-react-icons';
 import {MarkdownContent} from '../../components/MarkdownContent';
 import {getRepositoryUrl} from '../../core/env';
@@ -62,61 +63,160 @@ const resolveDocsHref = (article: DocsArticle, href: string) => {
   return `${getRepositoryUrl()}/blob/main/${resolvedPath}${hash}`;
 };
 
-export const DocsPage = () => (
-  <Stack gap="lg">
-    <Header description="Learn the tool from the same markdown sources that live in the repository, with quick access to architecture, setup, API usage, and bulk-management guides.">
-      Documentation
-    </Header>
+const getSelectedArticle = (hash: string) => {
+  const normalizedHash = hash.replace(/^#/, '');
 
-    <Card withBorder radius="md" padding="lg">
-      <Stack gap="md">
-        <Stack gap={4}>
-          <Text fw={600}>Browse by topic</Text>
+  if (!normalizedHash) {
+    return docsArticles[0];
+  }
+
+  return (
+    docsArticles.find((article) => article.slug === normalizedHash || normalizedHash.startsWith(`${article.slug}-`)) ??
+    docsArticles[0]
+  );
+};
+
+const getHeadingTargetId = (hash: string, fallbackArticle: DocsArticle) => {
+  const normalizedHash = hash.replace(/^#/, '');
+  return normalizedHash || fallbackArticle.slug;
+};
+
+const getArticleHash = (article: DocsArticle) => `#${article.slug}`;
+
+export const DocsPage = () => {
+  const [activeHash, setActiveHash] = useState(() => window.location.hash);
+
+  const selectedArticle = useMemo(() => getSelectedArticle(activeHash), [activeHash]);
+  const selectedArticleIndex = docsArticles.findIndex((article) => article.slug === selectedArticle.slug);
+  const previousArticle = selectedArticleIndex > 0 ? docsArticles[selectedArticleIndex - 1] : null;
+  const nextArticle = selectedArticleIndex < docsArticles.length - 1 ? docsArticles[selectedArticleIndex + 1] : null;
+
+  useEffect(() => {
+    const syncHash = () => setActiveHash(window.location.hash);
+
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, []);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      const targetId = getHeadingTargetId(activeHash, selectedArticle);
+      const target = document.getElementById(targetId) as HTMLElement | null;
+      target?.scrollIntoView?.({block: 'start'});
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeHash, selectedArticle]);
+
+  return (
+    <Stack gap="lg">
+      <Card withBorder radius="xl" padding="xl">
+        <Stack gap="lg">
+          <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+            <Stack gap="xs" style={{maxWidth: '48rem'}}>
+              <Badge color="violet" variant="light" size="lg">
+                {docsArticles.length} guides
+              </Badge>
+              <Header description="Start with the architecture view, then move into setup, APIs, ranking rules, and automation references.">
+                Documentation
+              </Header>
+            </Stack>
+
+            <Button
+              component="a"
+              href={getRepositoryUrl()}
+              target="_blank"
+              rel="noreferrer"
+              variant="default"
+              leftSection={<IconExternalLink size={16} />}
+            >
+              Open repository
+            </Button>
+          </Group>
+
           <Text size="sm" c="dimmed">
-            Jump to the guide you need, or open the repository if you want the raw markdown sources.
+            Pick a guide from the navigation and keep a shareable URL for the exact article or heading you are reading.
           </Text>
         </Stack>
-
-        <Group gap="sm" wrap="wrap">
-          {docsArticles.map((article) => (
-            <Button key={article.slug} component="a" href={`#${article.slug}`} variant="light" color="violet">
-              {article.title}
-            </Button>
-          ))}
-
-          <Button
-            component="a"
-            href={getRepositoryUrl()}
-            target="_blank"
-            rel="noreferrer"
-            variant="default"
-            leftSection={<IconExternalLink size={16} />}
-          >
-            Repository
-          </Button>
-        </Group>
-      </Stack>
-    </Card>
-
-    {docsArticles.map((article) => (
-      <Card key={article.slug} id={article.slug} withBorder radius="md" padding="lg">
-        <Stack gap="md">
-          <Stack gap={4}>
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-              {article.title}
-            </Text>
-            <Text size="sm" c="dimmed">
-              {article.description}
-            </Text>
-          </Stack>
-
-          <MarkdownContent
-            content={article.content}
-            headingIdPrefix={article.slug}
-            resolveHref={(href) => resolveDocsHref(article, href)}
-          />
-        </Stack>
       </Card>
-    ))}
-  </Stack>
-);
+
+      <div className="cmh-docs-layout">
+        <aside className="cmh-docs-sidebar">
+          <Card withBorder radius="xl" padding="lg">
+            <Stack gap="md">
+              <Stack gap={4}>
+                <Text fw={600}>Browse guides</Text>
+                <Text size="sm" c="dimmed">
+                  Jump between onboarding, architecture, APIs, and operational references.
+                </Text>
+              </Stack>
+
+              <Stack gap="sm">
+                {docsArticles.map((article) => {
+                  const isActive = selectedArticle.slug === article.slug;
+
+                  return (
+                    <div key={article.slug}>
+                      <Button
+                        component="a"
+                        href={getArticleHash(article)}
+                        variant={isActive ? 'filled' : 'light'}
+                        color="violet"
+                        fullWidth
+                        className="cmh-docs-nav-button"
+                      >
+                        {article.title}
+                      </Button>
+                      <Text size="xs" c="dimmed" mt={6}>
+                        {article.description}
+                      </Text>
+                    </div>
+                  );
+                })}
+              </Stack>
+            </Stack>
+          </Card>
+        </aside>
+
+        <div className="cmh-docs-content">
+          <Card key={selectedArticle.slug} id={selectedArticle.slug} withBorder radius="xl" padding="xl">
+            <Stack gap="lg">
+              <Stack gap={4}>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                  {selectedArticle.title}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {selectedArticle.description}
+                </Text>
+              </Stack>
+
+              <div className="cmh-docs-prose">
+                <MarkdownContent
+                  content={selectedArticle.content}
+                  headingIdPrefix={selectedArticle.slug}
+                  resolveHref={(href) => resolveDocsHref(selectedArticle, href)}
+                />
+              </div>
+
+              <Group justify="space-between" align="stretch" wrap="wrap" gap="md">
+                {previousArticle ? (
+                  <Button component="a" href={getArticleHash(previousArticle)} variant="default">
+                    Previous: {previousArticle.title}
+                  </Button>
+                ) : (
+                  <span />
+                )}
+
+                {nextArticle ? (
+                  <Button component="a" href={getArticleHash(nextArticle)} variant="light" color="violet">
+                    Next: {nextArticle.title}
+                  </Button>
+                ) : null}
+              </Group>
+            </Stack>
+          </Card>
+        </div>
+      </div>
+    </Stack>
+  );
+};
