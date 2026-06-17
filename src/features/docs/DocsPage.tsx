@@ -64,7 +64,7 @@ const resolveDocsHref = (article: DocsArticle, href: string) => {
 
 export const DocsPage = () => (
   <Stack gap="lg">
-    <Header description="Learn the tool from the same markdown sources that live in the repository, with quick access to setup, API usage, and bulk-management guides.">
+    <Header description="Learn the tool from the same markdown sources that live in the repository, with quick access to architecture, setup, API usage, and bulk-management guides.">
       Documentation
     </Header>
 

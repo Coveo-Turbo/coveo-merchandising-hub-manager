@@ -35,6 +35,18 @@ body {
   color: var(--mantine-color-violet-filled);
 }
 
+.cmh-markdown img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 1.25rem 0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+  background: #fff;
+}
+
 .cmh-markdown blockquote {
   margin: 0;
   padding-left: 1rem;

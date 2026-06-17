@@ -1,3 +1,4 @@
+import architectureOverview from '../../../docs/ARCHITECTURE_OVERVIEW.md?raw';
 import gettingStarted from '../../../docs/GETTING_STARTED.md?raw';
 import apiReference from '../../../API.md?raw';
 import rankingRulesGuide from '../../../docs/RANKING_RULES.md?raw';
@@ -12,6 +13,13 @@ export interface DocsArticle {
 }
 
 export const docsArticles: DocsArticle[] = [
+  {
+    slug: 'architecture-overview',
+    title: 'Architecture overview',
+    description: 'End-to-end view of the delivery surfaces, shared control layer, automation services, and Coveo platform execution flow.',
+    sourcePath: 'docs/ARCHITECTURE_OVERVIEW.md',
+    content: architectureOverview,
+  },
   {
     slug: 'getting-started',
     title: 'Getting started',

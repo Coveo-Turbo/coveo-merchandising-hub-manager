@@ -38,11 +38,14 @@ describe('DocsPage', () => {
   it('renders the docs index and markdown content from repo sources', () => {
     const {container} = render(<DocsPage />);
 
+    expect(screen.getAllByRole('link', {name: 'Architecture overview'})[0]).toBeTruthy();
     expect(screen.getAllByRole('link', {name: 'Getting started'})[0]).toBeTruthy();
     expect(screen.getAllByRole('link', {name: 'Import API'})[0]).toBeTruthy();
     expect(screen.getAllByRole('link', {name: 'Ranking rules'})[0]).toBeTruthy();
     expect(screen.getAllByRole('link', {name: 'Automation examples'})[0]).toBeTruthy();
 
+    expect(screen.getByRole('heading', {name: 'Architecture Overview'})).toBeTruthy();
+    expect(screen.getByAltText('CMH Manager end-to-end architecture overview')).toBeTruthy();
     expect(screen.getByRole('heading', {name: 'API Documentation'})).toBeTruthy();
     expect(screen.getAllByText('POST /api/import')[0]).toBeTruthy();
     expect(container.querySelector('table')).not.toBeNull();
