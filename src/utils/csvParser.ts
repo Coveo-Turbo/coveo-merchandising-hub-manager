@@ -1,5 +1,15 @@
 import type { CsvRow, PublicListingPageRequestModel, ListingPageApiPageRuleModel } from '../types';
 
+const decimalOperators = new Set(['isBetween', 'isGreaterThan', 'isGreaterThanOrEqualTo', 'isLessThan', 'isLessThanOrEqualTo']);
+
+function isNumericValue(value: string): boolean {
+  return value.trim() !== '' && !Number.isNaN(Number(value));
+}
+
+function shouldUseDecimalValue(operator: string, values: string[]): boolean {
+  return decimalOperators.has(operator) && values.length > 0 && values.every(isNumericValue);
+}
+
 /**
  * Maps CSV rows to Listing Page models
  * Groups rows by Name and consolidates URL patterns and rules
@@ -61,9 +71,9 @@ export const mapRowsToListings = (
         
         // Compare filter values
         let valuesMatch = false;
-        if (isArrayValue) {
-          // Compare array values efficiently using Set
-          const existingValues = existingFilter.value.values || [];
+        const existingValues = existingFilter.value.values || [];
+        if (existingValues.length > 0) {
+          // Compare multi-value filters efficiently using Set
           const filterValuesSet = new Set(filterValues);
           valuesMatch = existingValues.length === filterValues.length &&
             existingValues.every(v => filterValuesSet.has(v));
@@ -127,7 +137,10 @@ export const mapRowsToListings = (
           filters: [{
             fieldName: filterField,
             operator: operator,
-            value: isArrayValue ? {
+            value: shouldUseDecimalValue(operator, filterValues) ? {
+              type: 'decimal',
+              values: filterValues
+            } : isArrayValue ? {
               type: 'array',
               values: filterValues
             } : {
