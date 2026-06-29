@@ -1,13 +1,24 @@
-import type { CsvRow, PublicListingPageRequestModel, ListingPageApiPageRuleModel } from '../types';
+import type { CsvRow, PublicListingPageRequestModel, ListingPageApiPageRuleModel, QueryFilterValueModel } from '../types';
 
+// CSV imports do not include an explicit field type, so numeric comparison operators are the
+// safest signal we have to emit decimal filter values for Commerce listing page payloads.
 const decimalOperators = new Set(['isBetween', 'isGreaterThan', 'isGreaterThanOrEqualTo', 'isLessThan', 'isLessThanOrEqualTo']);
 
 function isNumericValue(value: string): boolean {
-  return value.trim() !== '' && !Number.isNaN(Number(value));
+  if (value.trim() === '') {
+    return false;
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue);
 }
 
 function shouldUseDecimalValue(operator: string, values: string[]): boolean {
   return decimalOperators.has(operator) && values.length > 0 && values.every(isNumericValue);
+}
+
+function usesValueArray(value: QueryFilterValueModel): boolean {
+  return (value.type === 'array' || value.type === 'decimal') && Array.isArray(value.values) && value.values.length > 0;
 }
 
 /**
@@ -71,9 +82,9 @@ export const mapRowsToListings = (
         
         // Compare filter values
         let valuesMatch = false;
-        const existingValues = existingFilter.value.values || [];
-        if (existingValues.length > 0) {
+        if (usesValueArray(existingFilter.value)) {
           // Compare multi-value filters efficiently using Set
+          const existingValues = existingFilter.value.values || [];
           const filterValuesSet = new Set(filterValues);
           valuesMatch = existingValues.length === filterValues.length &&
             existingValues.every(v => filterValuesSet.has(v));

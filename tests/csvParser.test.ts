@@ -60,4 +60,26 @@ describe('mapRowsToListings', () => {
       },
     });
   });
+
+  it('keeps numeric-looking exact match filters as strings', () => {
+    const rows: CsvRow[] = [
+      {
+        Name: 'SKU Filter',
+        UrlPattern: 'https://site.example/sku',
+        FilterField: 'ec_sku',
+        FilterValue: '200',
+        FilterOperator: 'isExactly',
+        Language: '',
+        Country: '',
+        Currency: '',
+      },
+    ];
+
+    const listings = mapRowsToListings(rows, 'storefront');
+
+    expect(listings[0].pageRules[0].filters[0].value).toEqual({
+      type: 'string',
+      value: '200',
+    });
+  });
 });
