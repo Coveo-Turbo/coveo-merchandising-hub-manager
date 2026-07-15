@@ -18,7 +18,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@coveops/commerce-troubleshoot-deployer": "^0.1.1",
+    "@coveops/commerce-troubleshoot-deployer": "^0.1.2",
     "@coveord/plasma-mantine": "^57.1.0",
     "@coveord/plasma-react-icons": "^57.0.0",
     "@coveord/plasma-tokens": "^57.0.0",
