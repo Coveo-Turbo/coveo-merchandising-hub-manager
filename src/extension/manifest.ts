@@ -4,7 +4,7 @@ import {extensionPageMatches} from './hosts';
 export default defineManifest({
   manifest_version: 3,
   name: 'CMH Manager',
-  version: '1.4.1',
+  version: '1.4.2',
   description: 'Blend CMH Manager into Coveo Merchandising Hub while keeping the standalone web app available.',
   permissions: ['storage', 'tabs'],
   host_permissions: [
